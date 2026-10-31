@@ -1,0 +1,28 @@
+{
+  "name": "@buwiz/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Buwiz Bot mini app SDK: the plugin half in TypeScript (packages/plugin) and the bridge types for TSX apps (packages/app)",
+  "license": "UNLICENSED",
+  "repository": "github:buwiz-app/buwiz-sdk",
+  "files": [
+    "packages",
+    "vectors"
+  ],
+  "type": "module",
+  "exports": {
+    "./plugin": "./packages/plugin/src/index.ts",
+    "./app": "./packages/app/buwiz.d.ts"
+  },
+  "scripts": {
+    "check": "oxlint && oxfmt --check && tsc --noEmit",
+    "fmt": "oxfmt",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.43.0",
+    "typescript": "^5.9.0"
+  }
+}

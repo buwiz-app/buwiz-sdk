@@ -1,0 +1,4 @@
+{
+  "printWidth": 160,
+  "ignorePatterns": ["vectors/**", "target/**"]
+}

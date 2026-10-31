@@ -1,0 +1,24 @@
+[workspace]
+resolver = "3"
+members = ["crates/buwiz-plugin"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+license = "UNLICENSED"
+publish = false
+repository = "https://github.com/buwiz-app/buwiz-sdk"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Signed objects carry integers only: no floats anywhere near them.
+float_arithmetic = "deny"
+float_cmp = "deny"
+float_cmp_const = "deny"
+lossy_float_literal = "deny"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

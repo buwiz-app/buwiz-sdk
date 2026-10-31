@@ -1,0 +1,29 @@
+{
+  "about": "Signing vectors both SDK halves reproduce. seed: a test seed (bytes 0..31), never a real key. cert is signed over cert_jcs with the seed's key.",
+  "app": {
+    "id": "hello",
+    "permissions": {
+      "tools": [
+        "hello_greet"
+      ]
+    }
+  },
+  "app_source": "export default function Hello() {\n  return null;\n}\n",
+  "cert": {
+    "app": "hello",
+    "ks_pub": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+    "not_after": 1793000000000,
+    "open_id": "AQEBAQEBAQEBAQEBAQEBAQ",
+    "perms_sha256": "43966972282071e412992ad355ef283856e5fb413b5622b0670446903ace8a11",
+    "plugin": "app.buwiz.hello",
+    "typ": "buwiz-session",
+    "v": 1
+  },
+  "cert_jcs": "{\"app\":\"hello\",\"ks_pub\":\"AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI\",\"not_after\":1793000000000,\"open_id\":\"AQEBAQEBAQEBAQEBAQEBAQ\",\"perms_sha256\":\"43966972282071e412992ad355ef283856e5fb413b5622b0670446903ace8a11\",\"plugin\":\"app.buwiz.hello\",\"typ\":\"buwiz-session\",\"v\":1}",
+  "cert_sig": "0_h9OFlPnZPH6lkXhFODkW5uKT-CvyvQQalFNSsNfJCj9MOXIBiyYgEj2JJKUK9NJGu13mqxV-ZizJ_qCrAcBA",
+  "fingerprint": "sha256:d3ea9f5f789fa7784d91440235e5d3d32256bfd3be5f729a9203cd51bfc6b7eb",
+  "perms_sha256": "43966972282071e412992ad355ef283856e5fb413b5622b0670446903ace8a11",
+  "perms_sha256_none": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "pub": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+  "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+}
