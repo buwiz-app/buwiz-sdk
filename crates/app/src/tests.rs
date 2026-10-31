@@ -1,6 +1,6 @@
 use std::{
     sync::{Arc, Mutex, mpsc},
-    task::{Context, Poll, Wake, Waker},
+    task::{Context, Poll, Waker},
     time::{Duration, Instant},
 };
 
@@ -64,16 +64,10 @@ impl Host for FakeHost {
     }
 }
 
-struct Wakes;
-impl Wake for Wakes {
-    fn wake(self: Arc<Self>) {}
-}
-
 /// `f`'s output: the fake host answers at once, so one poll is enough.
 fn now<T>(f: impl Future<Output = T>) -> T {
-    let waker = Waker::from(Arc::new(Wakes));
     let mut f = std::pin::pin!(f);
-    match f.as_mut().poll(&mut Context::from_waker(&waker)) {
+    match f.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
         Poll::Ready(v) => v,
         Poll::Pending => panic!("not answered"),
     }
