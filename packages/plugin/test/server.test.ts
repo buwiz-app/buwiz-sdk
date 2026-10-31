@@ -153,17 +153,13 @@ test("nothing runs before provision, and provision answers the manifest hash", a
   expect(again.result.isError).toBe(true);
 });
 
-test("provision refuses another plugin or protocol", async () => {
+test("provision refuses another plugin and leaves the protocol to the manifest", async () => {
   const run = new Run();
   const pub = PluginKey.fromSeed(SEED).public();
-  for (const [plugin, protocol] of [
-    ["app.buwiz.other", "2.0.0"],
-    ["app.buwiz.toy", "1.1.0"],
-    ["app.buwiz.toy", "2.1.0"],
-  ]) {
-    const reply = await run.call("buwiz.provision", { protocol, plugin, key: { alg: "ed25519", seed: b64u(SEED) }, pub });
-    expect(reply.result.isError).toBe(true);
-  }
+  const args = (plugin: string, protocol: string) => ({ protocol, plugin, key: { alg: "ed25519", seed: b64u(SEED) }, pub });
+  expect((await run.call("buwiz.provision", args("app.buwiz.other", "2.0.0"))).result.isError).toBe(true);
+  // the Bot decides compatibility from the manifest's protocol
+  expect(result(await run.call("buwiz.provision", args("app.buwiz.toy", "2.1.0"))).ok).toBe(true);
 });
 
 test("a session certificate is the request signed with the provisioned key", async () => {

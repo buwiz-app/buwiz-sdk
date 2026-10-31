@@ -372,20 +372,8 @@ impl<P: Plugin> Server<P> {
         if arguments.get("plugin").and_then(Value::as_str) != Some(P::ID) {
             return fail("invalid_args", &format!("this is {}", P::ID));
         }
-        let ours = manifest::PROTOCOL
-            .rsplit_once('.')
-            .map(|(major_minor, _)| major_minor);
-        let theirs = arguments
-            .get("protocol")
-            .and_then(Value::as_str)
-            .and_then(|version| version.rsplit_once('.'))
-            .map(|(major_minor, _)| major_minor);
-        if theirs != ours {
-            return fail(
-                "invalid_args",
-                &format!("this plugin implements protocol {}", manifest::PROTOCOL),
-            );
-        }
+        // `protocol` is not checked: the Bot decides compatibility from the
+        // manifest's `protocol`
         let key = match PluginKey::from_provision(arguments) {
             Ok(key) => key,
             Err(message) => return fail("invalid_args", &message),

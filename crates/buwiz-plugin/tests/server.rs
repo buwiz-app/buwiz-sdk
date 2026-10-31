@@ -200,21 +200,19 @@ fn nothing_runs_before_provision_and_provision_answers_the_manifest_hash() {
 }
 
 #[test]
-fn provision_refuses_another_plugin_or_protocol() {
+fn provision_refuses_another_plugin_and_leaves_the_protocol_to_the_manifest() {
     let mut run = Run::new();
     let key = PluginKey::from_seed(&SEED);
-    for (plugin, protocol) in [
-        ("app.buwiz.other", "2.0.0"),
-        (Toy::ID, "1.1.0"),
-        (Toy::ID, "2.1.0"),
-    ] {
-        let reply = run.call(
-            "buwiz.provision",
-            json!({ "protocol": protocol, "plugin": plugin, "key": { "alg": "ed25519", "seed": b64::encode(&SEED) }, "pub": key.public() }),
-            json!(null),
-        );
-        assert_eq!(reply["result"]["isError"], true, "{plugin} {protocol}");
-    }
+    let args = |plugin: &str, protocol: &str| json!({ "protocol": protocol, "plugin": plugin, "key": { "alg": "ed25519", "seed": b64::encode(&SEED) }, "pub": key.public() });
+    let other = run.call(
+        "buwiz.provision",
+        args("app.buwiz.other", "2.0.0"),
+        json!(null),
+    );
+    assert_eq!(other["result"]["isError"], true);
+    // the Bot decides compatibility from the manifest's protocol
+    let newer = run.call("buwiz.provision", args(Toy::ID, "2.1.0"), json!(null));
+    assert_eq!(result(&newer)["ok"], true);
 }
 
 #[test]

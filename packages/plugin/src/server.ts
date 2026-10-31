@@ -275,8 +275,8 @@ export class Server<P extends Plugin = Plugin> {
 
   #provision(args: Args): Result {
     if (args.plugin !== this.plugin.id) return fail("invalid_args", `this is ${this.plugin.id}`);
-    const majorMinor = (v: unknown) => (typeof v === "string" ? v.split(".").slice(0, 2).join(".") : undefined);
-    if (majorMinor(args.protocol) !== majorMinor(manifest.PROTOCOL)) return fail("invalid_args", `this plugin implements protocol ${manifest.PROTOCOL}`);
+    // `protocol` is not checked: the Bot decides compatibility from the
+    // manifest's `protocol`
     let key: PluginKey;
     try {
       key = PluginKey.fromProvision(args);
