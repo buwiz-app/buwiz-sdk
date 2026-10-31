@@ -41,10 +41,16 @@ impl Host for FakeHost {
         p.as_object().unwrap().clone()
     }
     fn post(&self, method: &str, data: Value) {
-        self.sent.lock().unwrap().push((method.to_owned(), data, false));
+        self.sent
+            .lock()
+            .unwrap()
+            .push((method.to_owned(), data, false));
     }
     fn call(&self, method: &str, data: Value, done: Done) {
-        self.sent.lock().unwrap().push((method.to_owned(), data.clone(), true));
+        self.sent
+            .lock()
+            .unwrap()
+            .push((method.to_owned(), data.clone(), true));
         match self.answer.lock().unwrap().clone() {
             Some(a) => done(a),
             None => done(Ok(data)),
@@ -74,7 +80,10 @@ fn now<T>(f: impl Future<Output = T>) -> T {
 }
 
 fn bridge(granted: Vec<&'static str>) -> (Arc<FakeHost>, Bridge) {
-    let host = Arc::new(FakeHost { granted, ..Default::default() });
+    let host = Arc::new(FakeHost {
+        granted,
+        ..Default::default()
+    });
     (host.clone(), Bridge::new(host))
 }
 
@@ -83,25 +92,52 @@ fn the_params_reach_the_bridge() {
     let (_, b) = bridge(vec![]);
     assert_eq!(b.props(), json!({"page": 2}));
     assert_eq!(b.app()["app"], "board");
-    assert_eq!(b.viewport_now(), Viewport { width: 360.0, height: 160.0, placement: Placement::Inline });
+    assert_eq!(
+        b.viewport_now(),
+        Viewport {
+            width: 360.0,
+            height: 160.0,
+            placement: Placement::Inline
+        }
+    );
 }
 
 #[test]
 fn calls_carry_the_tsx_bridges_data() {
     let (host, b) = bridge(vec!["buwiz.call"]);
-    assert_eq!(now(b.call("fx_echo", Value::Null)).unwrap(), json!({"tool": "fx_echo", "args": {}}));
+    assert_eq!(
+        now(b.call("fx_echo", Value::Null)).unwrap(),
+        json!({"tool": "fx_echo", "args": {}})
+    );
     now(b.actions(vec![Action::new("save", "Save").primary()])).unwrap();
-    now(b.meta(Some(Meta { text: "Draft".into(), pill: true }))).unwrap();
+    now(b.meta(Some(Meta {
+        text: "Draft".into(),
+        pill: true,
+    })))
+    .unwrap();
     now(b.settle("Saved")).unwrap();
     b.fit(120.4).unwrap();
     b.ready();
     let sent = host.sent.lock().unwrap();
-    let names: Vec<(&str, bool)> = sent.iter().map(|(m, _, call)| (m.as_str(), *call)).collect();
+    let names: Vec<(&str, bool)> = sent
+        .iter()
+        .map(|(m, _, call)| (m.as_str(), *call))
+        .collect();
     assert_eq!(
         names,
-        [("buwiz.call", true), ("buwiz.actions", true), ("buwiz.meta", true), ("buwiz.settle", true), ("buwiz.fit", false), ("buwiz.ready", false)]
+        [
+            ("buwiz.call", true),
+            ("buwiz.actions", true),
+            ("buwiz.meta", true),
+            ("buwiz.settle", true),
+            ("buwiz.fit", false),
+            ("buwiz.ready", false)
+        ]
     );
-    assert_eq!(sent[1].1, json!({"actions": [{"id": "save", "label": "Save", "primary": true, "disabled": false}]}));
+    assert_eq!(
+        sent[1].1,
+        json!({"actions": [{"id": "save", "label": "Save", "primary": true, "disabled": false}]})
+    );
     assert_eq!(sent[2].1, json!({"meta": {"text": "Draft", "pill": true}}));
     assert_eq!(sent[4].1, json!({"height": 121.0}));
 }
@@ -110,7 +146,10 @@ fn calls_carry_the_tsx_bridges_data() {
 fn a_rejection_is_a_buwiz_error_and_a_dropped_answer_is_internal() {
     let (host, b) = bridge(vec![]);
     *host.answer.lock().unwrap() = Some(Err(BuwizError::new("permission_denied", false, "no")));
-    assert_eq!(now(b.call("x", json!({}))).unwrap_err().code, "permission_denied");
+    assert_eq!(
+        now(b.call("x", json!({}))).unwrap_err().code,
+        "permission_denied"
+    );
     struct Drops;
     impl Host for Drops {
         fn params(&self) -> Map<String, Value> {
@@ -143,22 +182,53 @@ fn ungranted_capabilities_are_none() {
     assert!(none.pick_file(PickOptions::default()).is_none());
     assert!(none.copy("x").is_none());
     assert!(none.preview("fx_doc", Value::Null, None).is_none());
-    let (host, all) = bridge(vec!["buwiz.storage.get", "buwiz.attach", "buwiz.pickFile", "buwiz.copy", "buwiz.preview"]);
+    let (host, all) = bridge(vec![
+        "buwiz.storage.get",
+        "buwiz.attach",
+        "buwiz.pickFile",
+        "buwiz.copy",
+        "buwiz.preview",
+    ]);
     let s = all.storage().expect("granted");
     now(s.set("k", "v")).unwrap();
     now(all.copy("hi").expect("granted")).unwrap();
-    now(all.preview("fx_doc", Value::Null, Some("Doc")).expect("granted")).unwrap();
+    now(all
+        .preview("fx_doc", Value::Null, Some("Doc"))
+        .expect("granted"))
+    .unwrap();
     let sent = host.sent.lock().unwrap();
-    assert_eq!(sent[0], ("buwiz.storage.set".to_owned(), json!({"key": "k", "value": "v"}), true));
+    assert_eq!(
+        sent[0],
+        (
+            "buwiz.storage.set".to_owned(),
+            json!({"key": "k", "value": "v"}),
+            true
+        )
+    );
     assert_eq!(sent[2].1, json!({"tool": "fx_doc", "title": "Doc"}));
 }
 
 #[test]
 fn picked_files_read_their_bytes() {
     let (host, b) = bridge(vec!["buwiz.pickFile"]);
-    *host.answer.lock().unwrap() = Some(Ok(json!([{"id": "f1", "name": "a.csv", "size": 3, "type": "text/csv"}])));
-    let files = now(b.pick_file(PickOptions { extensions: vec![".csv".into()], multiple: false }).unwrap()).unwrap();
-    assert_eq!((files[0].name.as_str(), files[0].size, files[0].mime.as_str()), ("a.csv", 3, "text/csv"));
+    *host.answer.lock().unwrap() = Some(Ok(
+        json!([{"id": "f1", "name": "a.csv", "size": 3, "type": "text/csv"}]),
+    ));
+    let files = now(b
+        .pick_file(PickOptions {
+            extensions: vec![".csv".into()],
+            multiple: false,
+        })
+        .unwrap())
+    .unwrap();
+    assert_eq!(
+        (
+            files[0].name.as_str(),
+            files[0].size,
+            files[0].mime.as_str()
+        ),
+        ("a.csv", 3, "text/csv")
+    );
     *host.answer.lock().unwrap() = Some(Ok(json!("YWJj")));
     assert_eq!(now(files[0].read()).unwrap(), b"abc");
     assert_eq!(host.sent.lock().unwrap()[1].1, json!({"read": "f1"}));
@@ -167,8 +237,18 @@ fn picked_files_read_their_bytes() {
 #[test]
 fn a_viewport_event_updates_the_bridge() {
     let (host, b) = bridge(vec![]);
-    host.emit("buwiz.viewport", json!({"width": 800, "height": 600, "placement": "full"}));
-    assert_eq!(b.viewport_now(), Viewport { width: 800.0, height: 600.0, placement: Placement::Full });
+    host.emit(
+        "buwiz.viewport",
+        json!({"width": 800, "height": 600, "placement": "full"}),
+    );
+    assert_eq!(
+        b.viewport_now(),
+        Viewport {
+            width: 800.0,
+            height: 600.0,
+            placement: Placement::Full
+        }
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -185,9 +265,19 @@ impl MountSink for Sink {
 
 /// Runs `root` until a text starting with `prefix` shows, or `until` holds.
 /// `during` runs each round with what showed so far.
-fn run(root: Root, prefix: &str, until: impl Fn() -> bool, during: impl Fn(&[String])) -> Vec<String> {
+fn run(
+    root: Root,
+    prefix: &str,
+    until: impl Fn() -> bool,
+    during: impl Fn(&[String]),
+) -> Vec<String> {
     let (tx, rx) = mpsc::channel();
-    let engine = Engine::start(EngineConfig::new(App::Rust(root)), || ApproxTextEngine, Sink(tx)).expect("engine starts");
+    let engine = Engine::start(
+        EngineConfig::new(App::Rust(root)),
+        || ApproxTextEngine,
+        Sink(tx),
+    )
+    .expect("engine starts");
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut shown = Vec::new();
     while Instant::now() < deadline {
@@ -249,13 +339,23 @@ fn the_viewport_signal_and_actions_follow_the_host() {
             let vp = b.viewport();
             let pressed = signal(String::from("-"));
             b.on_action(move |id| pressed.set(id.to_owned()));
-            text(move || format!("vp {} {:?} {}", vp.get().width, vp.get().placement, pressed.get()))
+            text(move || {
+                format!(
+                    "vp {} {:?} {}",
+                    vp.get().width,
+                    vp.get().placement,
+                    pressed.get()
+                )
+            })
         }),
         "vp 800 Full save",
         || false,
         move |shown| {
             if !shown.is_empty() {
-                e.emit("buwiz.viewport", json!({"width": 800, "height": 600, "placement": "full"}));
+                e.emit(
+                    "buwiz.viewport",
+                    json!({"width": 800, "height": 600, "placement": "full"}),
+                );
                 e.emit("buwiz.action", json!({"id": "save"}));
             }
         },

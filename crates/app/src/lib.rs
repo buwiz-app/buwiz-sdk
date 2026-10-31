@@ -86,7 +86,10 @@ pub struct ScreenDef {
 
 impl std::fmt::Debug for ScreenDef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ScreenDef").field("id", &self.id).field("abi", &self.abi).finish()
+        f.debug_struct("ScreenDef")
+            .field("id", &self.id)
+            .field("abi", &self.abi)
+            .finish()
     }
 }
 
@@ -104,7 +107,11 @@ pub struct BuwizError {
 impl BuwizError {
     /// An error of `code` with `message`; `retryable` as given.
     pub fn new(code: impl Into<String>, retryable: bool, message: impl Into<String>) -> BuwizError {
-        BuwizError { code: code.into(), retryable, message: message.into() }
+        BuwizError {
+            code: code.into(),
+            retryable,
+            message: message.into(),
+        }
     }
 
     fn invalid(message: &str) -> BuwizError {
@@ -194,7 +201,11 @@ pub struct Action {
 impl Action {
     /// A button `id` labelled `label`.
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Action {
-        Action { id: id.into(), label: label.into(), ..Default::default() }
+        Action {
+            id: id.into(),
+            label: label.into(),
+            ..Default::default()
+        }
     }
 
     /// Drawn as the card's main button.
@@ -262,7 +273,11 @@ pub struct PickedFile {
 
 impl std::fmt::Debug for PickedFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PickedFile").field("name", &self.name).field("size", &self.size).field("mime", &self.mime).finish()
+        f.debug_struct("PickedFile")
+            .field("name", &self.name)
+            .field("size", &self.size)
+            .field("mime", &self.mime)
+            .finish()
     }
 }
 
@@ -272,7 +287,9 @@ impl PickedFile {
         let r = self.bridge.ask("buwiz.pickFile", json!({"read": self.id}));
         async move {
             let v = r.await?;
-            let s = v.as_str().ok_or_else(|| BuwizError::internal("the host sent no file bytes"))?;
+            let s = v
+                .as_str()
+                .ok_or_else(|| BuwizError::internal("the host sent no file bytes"))?;
             base64::engine::general_purpose::STANDARD
                 .decode(s)
                 .map_err(|_| BuwizError::internal("the host sent bad file bytes"))
@@ -289,14 +306,24 @@ pub struct Storage {
 
 impl Storage {
     /// The value under `key`, if any.
-    pub fn get(&self, key: &str) -> impl Future<Output = Result<Option<String>, BuwizError>> + 'static {
+    pub fn get(
+        &self,
+        key: &str,
+    ) -> impl Future<Output = Result<Option<String>, BuwizError>> + 'static {
         let r = self.bridge.ask("buwiz.storage.get", json!({"key": key}));
         async move { Ok(r.await?.as_str().map(str::to_owned)) }
     }
 
     /// Sets `key` to `value`.
-    pub fn set(&self, key: &str, value: &str) -> impl Future<Output = Result<(), BuwizError>> + 'static {
-        unit(self.bridge.ask("buwiz.storage.set", json!({"key": key, "value": value})))
+    pub fn set(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> impl Future<Output = Result<(), BuwizError>> + 'static {
+        unit(
+            self.bridge
+                .ask("buwiz.storage.set", json!({"key": key, "value": value})),
+        )
     }
 
     /// Removes `key`.
@@ -309,7 +336,11 @@ impl Storage {
         let r = self.bridge.ask("buwiz.storage.keys", Value::Null);
         async move {
             let v = r.await?;
-            Ok(v.as_array().into_iter().flatten().filter_map(|k| k.as_str().map(str::to_owned)).collect())
+            Ok(v.as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|k| k.as_str().map(str::to_owned))
+                .collect())
         }
     }
 }
@@ -323,7 +354,9 @@ pub struct Bridge {
 
 impl std::fmt::Debug for Bridge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Bridge").field("granted", &self.inner.granted).finish()
+        f.debug_struct("Bridge")
+            .field("granted", &self.inner.granted)
+            .finish()
     }
 }
 
@@ -349,7 +382,9 @@ fn fan_out<T: Clone>(list: &mut Vec<mpsc::UnboundedSender<T>>, v: &T) {
     list.retain(|tx| tx.send(v.clone()).is_ok());
 }
 
-async fn unit(r: impl Future<Output = Result<Value, BuwizError>> + 'static) -> Result<(), BuwizError> {
+async fn unit(
+    r: impl Future<Output = Result<Value, BuwizError>> + 'static,
+) -> Result<(), BuwizError> {
     r.await.map(|_| ())
 }
 
@@ -365,7 +400,10 @@ impl Bridge {
             .filter_map(|m| m.as_str().map(str::to_owned))
             .collect();
         let events = Arc::new(Mutex::new(Events {
-            viewport: params.get("viewport").and_then(Viewport::from_json).unwrap_or_default(),
+            viewport: params
+                .get("viewport")
+                .and_then(Viewport::from_json)
+                .unwrap_or_default(),
             ..Default::default()
         }));
         let heard = events.clone();
@@ -383,7 +421,9 @@ impl Bridge {
                         fan_out(&mut e.actions, &id.to_owned());
                     }
                 }
-                "buwiz.session" if data.get("state").and_then(Value::as_str) == Some("reconnecting") => {
+                "buwiz.session"
+                    if data.get("state").and_then(Value::as_str) == Some("reconnecting") =>
+                {
                     fan_out(&mut e.sessions, &SessionEvent::Reconnecting);
                 }
                 _ => {}
@@ -391,7 +431,15 @@ impl Bridge {
         }));
         let props = params.get("props").cloned().unwrap_or_else(|| json!({}));
         let app = params.get("app").cloned().unwrap_or_else(|| json!({}));
-        Bridge { inner: Arc::new(Inner { host, props, app, granted, events }) }
+        Bridge {
+            inner: Arc::new(Inner {
+                host,
+                props,
+                app,
+                granted,
+                events,
+            }),
+        }
     }
 
     fn has(&self, method: &str) -> bool {
@@ -399,7 +447,11 @@ impl Bridge {
     }
 
     /// Calls `method` now; the future is its answer.
-    fn ask(&self, method: &str, data: Value) -> impl Future<Output = Result<Value, BuwizError>> + 'static {
+    fn ask(
+        &self,
+        method: &str,
+        data: Value,
+    ) -> impl Future<Output = Result<Value, BuwizError>> + 'static {
         let (tx, rx) = oneshot::channel();
         self.inner.host.call(
             method,
@@ -408,7 +460,10 @@ impl Bridge {
                 let _ = tx.send(r);
             }),
         );
-        async move { rx.await.unwrap_or_else(|_| Err(BuwizError::internal("the host did not answer"))) }
+        async move {
+            rx.await
+                .unwrap_or_else(|_| Err(BuwizError::internal("the host did not answer")))
+        }
     }
 
     /// The open's props (`buwiz.props`), as its manifest's schema checked them.
@@ -423,7 +478,11 @@ impl Bridge {
 
     /// The viewport now.
     pub fn viewport_now(&self) -> Viewport {
-        self.inner.events.lock().unwrap_or_else(|e| e.into_inner()).viewport
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .viewport
     }
 
     /// The viewport, as a signal that follows it (`buwiz.viewport()`).
@@ -451,7 +510,9 @@ impl Bridge {
         if !(height.is_finite() && height > 0.0) {
             return Err(BuwizError::invalid("buwiz.fit takes a height in points"));
         }
-        self.inner.host.post("buwiz.fit", json!({"height": height.ceil()}));
+        self.inner
+            .host
+            .post("buwiz.fit", json!({"height": height.ceil()}));
         Ok(())
     }
 
@@ -463,7 +524,10 @@ impl Bridge {
     }
 
     /// An inline card's footer buttons (`buwiz.actions`; empty clears them).
-    pub fn actions(&self, actions: Vec<Action>) -> impl Future<Output = Result<(), BuwizError>> + 'static {
+    pub fn actions(
+        &self,
+        actions: Vec<Action>,
+    ) -> impl Future<Output = Result<(), BuwizError>> + 'static {
         let list: Vec<Value> = actions.iter().map(Action::to_json).collect();
         unit(self.ask("buwiz.actions", json!({"actions": list})))
     }
@@ -473,7 +537,12 @@ impl Bridge {
     /// component lives, or until the task is cancelled.
     pub fn on_action(&self, f: impl Fn(&str) + 'static) -> Spawned<Option<()>> {
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        self.inner.events.lock().unwrap_or_else(|e| e.into_inner()).actions.push(tx);
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .actions
+            .push(tx);
         self.spawn(async move {
             while let Some(id) = rx.recv().await {
                 f(&id);
@@ -482,7 +551,10 @@ impl Bridge {
     }
 
     /// An inline card's header status (`buwiz.meta`; `None` clears it).
-    pub fn meta(&self, meta: Option<Meta>) -> impl Future<Output = Result<(), BuwizError>> + 'static {
+    pub fn meta(
+        &self,
+        meta: Option<Meta>,
+    ) -> impl Future<Output = Result<(), BuwizError>> + 'static {
         let meta = meta.map_or(Value::Null, |m| json!({"text": m.text, "pill": m.pill}));
         unit(self.ask("buwiz.meta", json!({"meta": meta})))
     }
@@ -497,7 +569,12 @@ impl Bridge {
     /// Inside a component's view, as [`Bridge::on_action`].
     pub fn on_session(&self, f: impl Fn(SessionEvent) + 'static) -> Spawned<Option<()>> {
         let (tx, mut rx) = mpsc::unbounded_channel::<SessionEvent>();
-        self.inner.events.lock().unwrap_or_else(|e| e.into_inner()).sessions.push(tx);
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .sessions
+            .push(tx);
         self.spawn(async move {
             while let Some(e) = rx.recv().await {
                 f(e);
@@ -510,29 +587,51 @@ impl Bridge {
     /// component's view: it ends with the component. A task spawned with
     /// nsh's `spawn` itself reaches no error boundary: its panic is only
     /// logged.
-    pub fn spawn<T: 'static>(&self, future: impl Future<Output = T> + 'static) -> Spawned<Option<T>> {
+    pub fn spawn<T: 'static>(
+        &self,
+        future: impl Future<Output = T> + 'static,
+    ) -> Spawned<Option<T>> {
         let bridge = self.clone();
-        spawn(Caught { future: Box::pin(future), bridge })
+        spawn(Caught {
+            future: Box::pin(future),
+            bridge,
+        })
     }
 
     /// Calls the plugin's tool `tool` with `args` (an object; `null` is
     /// `{}`), signed by the open's session key (`buwiz.call`): its
     /// `structuredContent`, else its text.
-    pub fn call(&self, tool: &str, args: Value) -> impl Future<Output = Result<Value, BuwizError>> + 'static {
+    pub fn call(
+        &self,
+        tool: &str,
+        args: Value,
+    ) -> impl Future<Output = Result<Value, BuwizError>> + 'static {
         let args = if args.is_null() { json!({}) } else { args };
         self.ask("buwiz.call", json!({"tool": tool, "args": args}))
     }
 
     /// Opens the plugin's app `app` with `props` full screen
     /// (`buwiz.open({app, props})`).
-    pub fn open(&self, app: &str, props: Value) -> impl Future<Output = Result<(), BuwizError>> + 'static {
+    pub fn open(
+        &self,
+        app: &str,
+        props: Value,
+    ) -> impl Future<Output = Result<(), BuwizError>> + 'static {
         unit(self.ask("buwiz.open", json!({"app": app, "props": props})))
     }
 
     /// Opens `app` on the subject `ticket` stands for
     /// (`buwiz.open({app, props, ticket})`).
-    pub fn open_ticket(&self, app: &str, ticket: &str, props: Value) -> impl Future<Output = Result<(), BuwizError>> + 'static {
-        unit(self.ask("buwiz.open", json!({"app": app, "props": props, "ticket": ticket})))
+    pub fn open_ticket(
+        &self,
+        app: &str,
+        ticket: &str,
+        props: Value,
+    ) -> impl Future<Output = Result<(), BuwizError>> + 'static {
+        unit(self.ask(
+            "buwiz.open",
+            json!({"app": app, "props": props, "ticket": ticket}),
+        ))
     }
 
     /// Opens an https `url` of the app's `open.external` in the browser,
@@ -543,33 +642,54 @@ impl Bridge {
 
     /// The title of the subject `ticket` stands for, if the plugin still
     /// knows it (`buwiz.ticket.title`).
-    pub fn ticket_title(&self, ticket: &str) -> impl Future<Output = Result<Option<String>, BuwizError>> + 'static {
+    pub fn ticket_title(
+        &self,
+        ticket: &str,
+    ) -> impl Future<Output = Result<Option<String>, BuwizError>> + 'static {
         let r = self.ask("buwiz.ticket.title", json!({"ticket": ticket}));
         async move { Ok(r.await?.as_str().map(str::to_owned)) }
     }
 
     /// The app's storage, when its permissions grant it.
     pub fn storage(&self) -> Option<Storage> {
-        self.has("buwiz.storage.get").then(|| Storage { bridge: self.clone() })
+        self.has("buwiz.storage.get").then(|| Storage {
+            bridge: self.clone(),
+        })
     }
 
     /// Attaches the subject `value` of scope `scope` to the open's chat,
     /// once the person agrees (`buwiz.attach`), when granted.
-    pub fn attach(&self, scope: &str, value: &str) -> Option<impl Future<Output = Result<Attached, BuwizError>> + 'static> {
+    pub fn attach(
+        &self,
+        scope: &str,
+        value: &str,
+    ) -> Option<impl Future<Output = Result<Attached, BuwizError>> + 'static> {
         if !self.has("buwiz.attach") {
             return None;
         }
         let r = self.ask("buwiz.attach", json!({"scope": scope, "value": value}));
         Some(async move {
             let v = r.await?;
-            let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_owned();
-            Ok(Attached { token: s("token"), title: s("title"), attached: v.get("attached") == Some(&Value::Bool(true)) })
+            let s = |k: &str| {
+                v.get(k)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            Ok(Attached {
+                token: s("token"),
+                title: s("title"),
+                attached: v.get("attached") == Some(&Value::Bool(true)),
+            })
         })
     }
 
     /// Shows the file dialog (`buwiz.pickFile`), when granted: the files
     /// chosen, none on Cancel.
-    pub fn pick_file(&self, options: PickOptions) -> Option<impl Future<Output = Result<Vec<PickedFile>, BuwizError>> + 'static> {
+    pub fn pick_file(
+        &self,
+        options: PickOptions,
+    ) -> Option<impl Future<Output = Result<Vec<PickedFile>, BuwizError>> + 'static> {
         if !self.has("buwiz.pickFile") {
             return None;
         }
@@ -582,11 +702,18 @@ impl Bridge {
         let bridge = self.clone();
         Some(async move {
             let v = r.await?;
-            let files = v.as_array().ok_or_else(|| BuwizError::internal("the host sent no files"))?;
+            let files = v
+                .as_array()
+                .ok_or_else(|| BuwizError::internal("the host sent no files"))?;
             Ok(files
                 .iter()
                 .map(|f| {
-                    let s = |k: &str| f.get(k).and_then(Value::as_str).unwrap_or_default().to_owned();
+                    let s = |k: &str| {
+                        f.get(k)
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_owned()
+                    };
                     PickedFile {
                         name: s("name"),
                         size: f.get("size").and_then(Value::as_u64).unwrap_or(0),
@@ -600,14 +727,23 @@ impl Bridge {
     }
 
     /// Puts `text` on the pasteboard (`buwiz.copy`), when granted.
-    pub fn copy(&self, text: &str) -> Option<impl Future<Output = Result<(), BuwizError>> + 'static> {
-        self.has("buwiz.copy").then(|| unit(self.ask("buwiz.copy", json!({"text": text}))))
+    pub fn copy(
+        &self,
+        text: &str,
+    ) -> Option<impl Future<Output = Result<(), BuwizError>> + 'static> {
+        self.has("buwiz.copy")
+            .then(|| unit(self.ask("buwiz.copy", json!({"text": text}))))
     }
 
     /// Shows the HTML document the app's tool `tool` makes from `args` over
     /// the screen (`buwiz.preview`), titled `title` (else the document's),
     /// when granted.
-    pub fn preview(&self, tool: &str, args: Value, title: Option<&str>) -> Option<impl Future<Output = Result<(), BuwizError>> + 'static> {
+    pub fn preview(
+        &self,
+        tool: &str,
+        args: Value,
+        title: Option<&str>,
+    ) -> Option<impl Future<Output = Result<(), BuwizError>> + 'static> {
         if !self.has("buwiz.preview") {
             return None;
         }
@@ -638,7 +774,9 @@ impl<F: Future> Future for Caught<F> {
     type Output = Option<F::Output>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let polled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.future.as_mut().poll(cx)));
+        let polled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.future.as_mut().poll(cx)
+        }));
         match polled {
             Ok(Poll::Ready(v)) => Poll::Ready(Some(v)),
             Ok(Poll::Pending) => Poll::Pending,

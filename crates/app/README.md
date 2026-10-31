@@ -55,8 +55,13 @@ fn ledger(bridge: Bridge) -> Root {
 The manifest names the screen in place of a TSX entry:
 
 ```json
-{ "id": "ledger", "title": "Ledger", "native": { "screen": "books.ledger", "abi": 1 },
-  "placement": ["full", "inline"], "permissions": { "tools": ["books_total"] } }
+{
+  "id": "ledger",
+  "title": "Ledger",
+  "native": { "screen": "books.ledger", "abi": 1 },
+  "placement": ["full", "inline"],
+  "permissions": { "tools": ["books_total"] }
+}
 ```
 
 Buwiz Bot lists the screens crates it compiles in, one per plugin id, and
@@ -79,27 +84,27 @@ it with `--first-party`
 
 The `buwiz` global, in Rust:
 
-| `buwiz` (TSX) | `Bridge` |
-|---|---|
-| `buwiz.props`, `buwiz.app` | `props() -> Value`, `app() -> Value` |
-| `buwiz.viewport()` | `viewport() -> ReadSignal<Viewport>`, `viewport_now() -> Viewport` |
-| `buwiz.fit(height)` | `fit(f32) -> Result<(), BuwizError>` |
-| `buwiz.ready()` | `ready()` |
-| `buwiz.actions(list)` | `actions(Vec<Action>) -> impl Future<Output = Result<(), BuwizError>>` |
-| `buwiz.onAction(f)` | `on_action(impl Fn(&str)) -> Spawned<Option<()>>` |
-| `buwiz.meta(meta)` | `meta(Option<Meta>) -> impl Future<…>` |
-| `buwiz.settle(text)` | `settle(&str) -> impl Future<…>` |
-| `buwiz.call(tool, args)` | `call(&str, Value) -> impl Future<Output = Result<Value, BuwizError>>` |
-| `buwiz.open({app, props, ticket?})` | `open(app, props)`, `open_ticket(app, ticket, props)` |
-| `buwiz.open({url})` | `open_url(url)` |
-| `buwiz.ticket.title(ticket)` | `ticket_title(&str) -> impl Future<Output = Result<Option<String>, BuwizError>>` |
-| `host.on("buwiz.session")` | `on_session(impl Fn(SessionEvent)) -> Spawned<Option<()>>` |
-| an `async` function | `spawn(impl Future<Output = T>) -> Spawned<Option<T>>` |
-| `buwiz.storage` | `storage() -> Option<Storage>`: `get`, `set`, `remove`, `keys` |
-| `buwiz.attach(scope, value)` | `attach(scope, value) -> Option<impl Future<Output = Result<Attached, BuwizError>>>` |
-| `buwiz.pickFile(options)` | `pick_file(PickOptions) -> Option<impl Future<Output = Result<Vec<PickedFile>, BuwizError>>>`; `PickedFile::read()` |
-| `buwiz.copy(text)` | `copy(&str) -> Option<impl Future<…>>` |
-| `buwiz.preview({tool, args, title})` | `preview(tool, args, title) -> Option<impl Future<…>>` |
+| `buwiz` (TSX)                        | `Bridge`                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `buwiz.props`, `buwiz.app`           | `props() -> Value`, `app() -> Value`                                                                                |
+| `buwiz.viewport()`                   | `viewport() -> ReadSignal<Viewport>`, `viewport_now() -> Viewport`                                                  |
+| `buwiz.fit(height)`                  | `fit(f32) -> Result<(), BuwizError>`                                                                                |
+| `buwiz.ready()`                      | `ready()`                                                                                                           |
+| `buwiz.actions(list)`                | `actions(Vec<Action>) -> impl Future<Output = Result<(), BuwizError>>`                                              |
+| `buwiz.onAction(f)`                  | `on_action(impl Fn(&str)) -> Spawned<Option<()>>`                                                                   |
+| `buwiz.meta(meta)`                   | `meta(Option<Meta>) -> impl Future<…>`                                                                              |
+| `buwiz.settle(text)`                 | `settle(&str) -> impl Future<…>`                                                                                    |
+| `buwiz.call(tool, args)`             | `call(&str, Value) -> impl Future<Output = Result<Value, BuwizError>>`                                              |
+| `buwiz.open({app, props, ticket?})`  | `open(app, props)`, `open_ticket(app, ticket, props)`                                                               |
+| `buwiz.open({url})`                  | `open_url(url)`                                                                                                     |
+| `buwiz.ticket.title(ticket)`         | `ticket_title(&str) -> impl Future<Output = Result<Option<String>, BuwizError>>`                                    |
+| `host.on("buwiz.session")`           | `on_session(impl Fn(SessionEvent)) -> Spawned<Option<()>>`                                                          |
+| an `async` function                  | `spawn(impl Future<Output = T>) -> Spawned<Option<T>>`                                                              |
+| `buwiz.storage`                      | `storage() -> Option<Storage>`: `get`, `set`, `remove`, `keys`                                                      |
+| `buwiz.attach(scope, value)`         | `attach(scope, value) -> Option<impl Future<Output = Result<Attached, BuwizError>>>`                                |
+| `buwiz.pickFile(options)`            | `pick_file(PickOptions) -> Option<impl Future<Output = Result<Vec<PickedFile>, BuwizError>>>`; `PickedFile::read()` |
+| `buwiz.copy(text)`                   | `copy(&str) -> Option<impl Future<…>>`                                                                              |
+| `buwiz.preview({tool, args, title})` | `preview(tool, args, title) -> Option<impl Future<…>>`                                                              |
 
 A capability the app's permissions may leave out returns `None` when they
 do, as the TSX global leaves it out. A call is sent when it is made, not

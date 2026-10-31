@@ -19,7 +19,7 @@ To start a new mini app, don't start here: use a template, which already depends
 | Path                 | What                                                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `crates/plugin/`     | The plugin half in Rust (crate `buwiz-plugin`): `Plugin`, `Server`, `cli::main`, `Tickets`, `manifest`, `testing::Harness` |
-| `crates/app/`        | Native screens in Rust (crate `buwiz-app`), first-party only: `ScreenDef`, `Bridge`, `Host`, `root`                         |
+| `crates/app/`        | Native screens in Rust (crate `buwiz-app`), first-party only: `ScreenDef`, `Bridge`, `Host`, `root`                        |
 | `packages/plugin/`   | The same in TypeScript (`@buwiz/sdk/plugin`): `Plugin`, `Server`, `main`, `Tickets`, `Harness`, the manifest's types       |
 | `packages/app/`      | Types for TSX screens (`@buwiz/sdk/app`): the `buwiz` bridge                                                               |
 | `vectors/`           | Canonical JSON and signing vectors both halves reproduce byte for byte (`jcs.json` is the Bot's own)                       |

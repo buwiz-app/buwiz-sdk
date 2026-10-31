@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use nsh_core::element::{
-    AnyElement, Children, Component, IntoElement, NoEvent, PropError, PropSpec, Props, Root, Scope,
-    Slot, TsTypes, catch_error, view, AnyValue,
+    AnyElement, AnyValue, Children, Component, IntoElement, NoEvent, PropError, PropSpec, Props,
+    Root, Scope, Slot, TsTypes, catch_error, view,
 };
 
 use crate::Bridge;
@@ -18,7 +18,10 @@ type View = Arc<dyn Fn(Bridge) -> AnyElement + Send + Sync>;
 /// [`crate::ScreenDef::build`] returns. A panic under it (its view, a
 /// binding, a listener, an effect; tasks: [`Bridge::spawn`]) shows the mini
 /// app's error banner, as a TSX app's uncaught error does.
-pub fn root<E: IntoElement>(bridge: Bridge, view: impl Fn(Bridge) -> E + Send + Sync + 'static) -> Root {
+pub fn root<E: IntoElement>(
+    bridge: Bridge,
+    view: impl Fn(Bridge) -> E + Send + Sync + 'static,
+) -> Root {
     let view: View = Arc::new(move |b| view(b).into_element());
     let screen = Arc::new(Screen { bridge, view });
     Root::new::<Boundary>(move || ScreenProps(Some(screen.clone())))
@@ -75,7 +78,9 @@ impl Component for Boundary {
     type Event = NoEvent;
 
     fn view(props: ScreenProps, _: Scope<NoEvent>) -> impl IntoElement {
-        let Some(screen) = props.0 else { return view().into_element() };
+        let Some(screen) = props.0 else {
+            return view().into_element();
+        };
         let bridge = screen.bridge.clone();
         catch_error(
             move || Body::element(ScreenProps(Some(screen.clone()))),
