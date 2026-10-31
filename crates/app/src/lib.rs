@@ -349,8 +349,8 @@ fn fan_out<T: Clone>(list: &mut Vec<mpsc::UnboundedSender<T>>, v: &T) {
     list.retain(|tx| tx.send(v.clone()).is_ok());
 }
 
-fn unit(r: impl Future<Output = Result<Value, BuwizError>> + 'static) -> impl Future<Output = Result<(), BuwizError>> + 'static {
-    async move { r.await.map(|_| ()) }
+async fn unit(r: impl Future<Output = Result<Value, BuwizError>> + 'static) -> Result<(), BuwizError> {
+    r.await.map(|_| ())
 }
 
 impl Bridge {

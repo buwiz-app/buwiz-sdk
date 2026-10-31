@@ -1,19 +1,19 @@
 [package]
 name = "buwiz-app"
 version = "0.1.0"
-edition = "2024"
-publish = false
 description = "Native screens for first-party Buwiz Bot mini apps: the screen definition and the bridge (the `buwiz` global, in Rust)"
-# a member of the app's workspace for now; it moves to the SDK repo
-# (buwiz-app/buwiz-sdk, `crates/app`), so it depends on nsh only
-workspace = "../../app"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
 
 [lib]
 name = "buwiz_app"
 path = "src/lib.rs"
 
 [dependencies]
-nsh-core = { path = "../../nsh/crates/nsh-core" }
+nsh-core = { git = "https://github.com/hexuria/nsh", tag = "rox-2026-11-01" }
 serde_json = "1"
 # the host answers on its own threads; the screen awaits on the engine
 # thread (nsh's tasks run inside a tokio context)
@@ -22,4 +22,10 @@ tokio = { version = "1", features = ["sync"] }
 base64 = "0.22"
 
 [dev-dependencies]
-nsh-engine = { path = "../../nsh/crates/nsh-engine" }
+nsh-engine = { git = "https://github.com/hexuria/nsh", tag = "rox-2026-11-01" }
+
+# Not the workspace's lints: those deny floats, for signed objects. A screen
+# lays out in nsh's f32 pixels (`Viewport`, `fit`) and signs nothing, so
+# only `unsafe_code` carries over.
+[lints.rust]
+unsafe_code = "forbid"

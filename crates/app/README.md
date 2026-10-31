@@ -15,16 +15,15 @@ inline card's fit, ready, footer buttons, status and settle. The host runs
 the same checks for a native screen's calls as for a TSX app's. This crate
 only gives them a Rust shape.
 
-This crate lives in the Buwiz Bot repository for now. It will move to the
-SDK repository, `buwiz-app/buwiz-sdk`, as `crates/app` (beside
-`crates/plugin`, `buwiz-plugin`, and mirroring `packages/app`), so it
-depends on nothing of Buwiz Bot's, only on nsh.
+This crate is the SDK's `crates/app`, beside `crates/plugin`
+(`buwiz-plugin`) and mirroring `packages/app`. It depends on nothing of
+Buwiz Bot's, only on nsh, pinned by tag.
 
 ## A plugin's screens crate
 
 A first-party plugin keeps its native screens in a crate of its own, in the
-plugin's repository. The crate depends on this one and on `nsh-core`, and it
-exports its screens:
+plugin's repository. The crate depends on this one and on `nsh-core`
+from the same nsh tag, and it exports its screens:
 
 ```rust
 use buwiz_app::{ABI, Action, Bridge, ScreenDef};
@@ -73,7 +72,8 @@ it is only logged. A root made another way still runs, but its panics are
 only logged too.
 
 The plugin test runner checks a manifest with native screens when you run
-it with `--first-party` (`server/sdk/mini-app/docs/testing.md`).
+it with `--first-party`
+([`testing.md`](https://github.com/buwiz-bot/buwiz-bot/blob/main/server/sdk/mini-app/docs/testing.md)).
 
 ## The API
 
