@@ -1,6 +1,6 @@
 // The server against a toy plugin, through JSON-RPC lines: the provision
 // gate, session certificates, the caller checks, the reserved tools and the
-// resources. The Rust half runs the same cases (crates/buwiz-plugin/tests/server.rs).
+// resources. The Rust half runs the same cases (crates/plugin/tests/server.rs).
 
 import { expect, test } from "bun:test";
 import {

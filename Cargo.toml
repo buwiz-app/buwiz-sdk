@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/buwiz-plugin"]
+members = ["crates/plugin"]
 
 [workspace.package]
 edition = "2024"
