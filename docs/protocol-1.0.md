@@ -1597,8 +1597,7 @@ The same plugin as a package with one Google account and one skill. Hashes and t
   "mcpServers": {
     "notes": {
       "command": "${PLUGIN_ROOT}/bin/notes-mini-app",
-      "args": ["mcp"],
-      "env": { "BUWIZ_PLUGIN_MANIFEST": "${PLUGIN_ROOT}/app.buwiz.notes.manifest.json" }
+      "args": ["mcp"]
     }
   },
   "skills": ["skills/"],
@@ -1612,7 +1611,7 @@ The same plugin as a package with one Google account and one skill. Hashes and t
       { "id": "google", "provider": "google", "label": "Google account", "scopes": ["https://www.googleapis.com/auth/drive.file"], "required": false }
     ],
     "files": {
-      "app.buwiz.notes.manifest.json": { "asset": "app.buwiz.notes.manifest.json", "sha256": "<64 hex>" },
+      "bin/app.buwiz.notes.manifest.json": { "asset": "app.buwiz.notes.manifest.json", "sha256": "<64 hex>" },
       "skills/weekly-review/SKILL.md": { "asset": "skills.weekly-review.SKILL.md", "sha256": "<64 hex>" }
     },
     "binaries": {
