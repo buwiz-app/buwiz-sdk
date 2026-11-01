@@ -105,8 +105,13 @@ behind explicit arguments (P5), and user-facing text that carries no subject dat
 
 ## The protocol
 
-The rules every field and call follows are the Bot's: the manifest's fields and limits, the bridge, the security
-checklist (P1 to P10) and what the conformance runner checks. Read them in
+The specification is [Buwiz Mini App Protocol 1.0](docs/protocol-1.0.md): every name, field, limit, reserved tool,
+check and error code, for plugin authors and host implementers. It renumbers the pre-release drafts
+([history](docs/protocol-history.md)). This SDK's code still declares `2.0.0`, an old number; it moves to `1.0.0`
+with the Bot.
+
+The Bot's own guides cover the manifest's fields and limits, the bridge, the security checklist (P1 to P10) and
+what the conformance runner checks. Read them in
 [`buwiz-bot/buwiz-bot` `server/sdk/mini-app/docs/`](https://github.com/buwiz-bot/buwiz-bot/tree/main/server/sdk/mini-app/docs).
 Conformance runs the Bot's own `buwiz-plugin-test` against your built plugin; each template's
 `tools/bot/conformance.sh` does it.
