@@ -2,12 +2,14 @@
 
 Build mini apps for the Buwiz Bot. A mini app is a plugin: a stdio MCP server the Bot spawns, with a signed
 manifest, tools the model and apps call, and screens the Bot shows full screen or inline in the chat. It speaks
-**Mini App Protocol 2.0**, and only 2.0.
+**Mini App Protocol 1.0**, and only 1.0 (the protocol was numbered 2.0 and 2.1 before its public release; a 1.0
+Bot refuses plugins of those, so build against this SDK and release a 1.0 version).
 
 This SDK is the part every mini app shares. You write your manifest, your tools and your screens; the SDK does the
 protocol: MCP over stdio, the reserved `buwiz.*` tools (provision, session certificates, ticket titles,
-uninstall), the caller checks before any tool of yours runs, tickets, canonical JSON and ed25519 signing, the
-shared command line, and a test harness.
+uninstall, pushed account tokens), the caller checks before any tool of yours runs, tickets, canonical JSON and
+ed25519 signing, the shared command line (including `package`, which fills a release's `plugin.json` to sign),
+and a test harness.
 
 To start a new mini app, don't start here: use a template, which already depends on this SDK.
 
@@ -85,10 +87,36 @@ Both give the same command line:
 <binary> mcp                       speak MCP on stdio (what the Bot spawns)
 <binary> manifest [--key-id <id>]  print the unsigned manifest as JCS text, for signing
 <binary> app-source <id>           print a TSX app's source exactly as served
+<binary> package <plugin.json> <out> <platform> [--published <plugin.json>]
+                                   fill a release's plugin.json for signing
 ```
 
 A running plugin serves the signed manifest named by `BUWIZ_PLUGIN_MANIFEST`, else `<plugin id>.manifest.json`
 next to the executable. Without either it serves the unsigned manifest, and the Bot refuses the plugin.
+
+## Releasing a package
+
+A 1.0 release is a package (protocol 1.0 section 7): `plugin.json` with a signed `buwiz` block, the signed
+manifest and one binary per platform, as flat GitHub release assets.
+
+1. `<binary> manifest > manifest.json`, then sign it as `<out>/<plugin id>.manifest.json`
+   (`buwiz-broker sign-manifest manifest.json --keychain <key id> --out …`).
+2. Put this platform's build in `<out>` as `<binary>-<os>-<arch>` (e.g. `notes-mini-app-macos-aarch64`).
+3. `<binary> package package/plugin.json <out> <os>-<arch>` fills the template's `buwiz.files` (the manifest at
+   `bin/<plugin id>.manifest.json`, plus any file it lists by `asset`) and `buwiz.binaries` (`bin/<binary>`), each
+   with its SHA-256, adds an `mcpServers` entry for `buwiz.server` when the template has none, and writes
+   `<out>/plugin.unsigned.json`. Another platform's run passes the published `plugin.json` with `--published`
+   to keep its binaries.
+4. `buwiz-broker sign-manifest <out>/plugin.unsigned.json --block buwiz --keychain <key id> --out <out>/plugin.json`.
+5. Upload `plugin.json`, the manifest and the binaries. Publish a pre-release first when a switch is coordinated:
+   the Bot's install reads the latest release, which skips pre-releases.
+
+## Accounts
+
+A package that declares `buwiz.accounts` gets their tokens pushed (`buwiz.account.set` / `buwiz.account.clear`,
+protocol 1.0 section 20). The server keeps them in memory; a tool reads one with `caller.account("<id>")` (the
+`default` sign-in first, then any live one) and answers `account_required("<id>")` / `accountRequired("<id>")`
+when there is none, so the Bot asks the person to sign in. Never log a token or put it in an answer.
 
 ## What the server checks for you
 
@@ -107,8 +135,7 @@ behind explicit arguments (P5), and user-facing text that carries no subject dat
 
 The specification is [Buwiz Mini App Protocol 1.0](docs/protocol-1.0.md): every name, field, limit, reserved tool,
 check and error code, for plugin authors and host implementers. It renumbers the pre-release drafts
-([history](docs/protocol-history.md)). This SDK's code still declares `2.0.0`, an old number; it moves to `1.0.0`
-with the Bot.
+([history](docs/protocol-history.md)); this SDK implements 1.0.0.
 
 The Bot's own guides cover the manifest's fields and limits, the bridge, the security checklist (P1 to P10) and
 what the conformance runner checks. Read them in

@@ -1,7 +1,7 @@
 [package]
 name = "buwiz-plugin"
 version = "0.1.0"
-description = "The plugin half of a Buwiz Bot mini app, protocol 2.0: MCP on stdio, the reserved buwiz.* tools, signing, tickets and the caller checks"
+description = "The plugin half of a Buwiz Bot mini app, protocol 1.0: MCP on stdio, the reserved buwiz.* tools, signing, tickets and the caller checks"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

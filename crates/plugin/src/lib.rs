@@ -1,4 +1,4 @@
-//! The plugin half of a Buwiz Bot mini app, protocol 2.0.
+//! The plugin half of a Buwiz Bot mini app, protocol 1.0.
 //!
 //! A mini app is a stdio MCP server the Bot spawns. Implement [`Plugin`]
 //! (your manifest, your app sources, your tools) and hand it to
@@ -47,15 +47,18 @@
 
 use serde_json::{Value, json};
 
+pub mod accounts;
 pub mod b64;
 pub mod cli;
 pub mod jcs;
 pub mod key;
 pub mod manifest;
+pub mod package;
 mod server;
 pub mod testing;
 pub mod tickets;
 
+pub use accounts::{Account, Accounts, account_required};
 pub use manifest::PROTOCOL;
 pub use server::{
     Args, CERT_MAX_MS, Caller, INVALID_PARAMS, INVALID_REQUEST, MCP_PROTOCOL, METHOD_NOT_FOUND,

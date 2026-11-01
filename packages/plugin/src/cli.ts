@@ -3,10 +3,13 @@
 //   <name> mcp                         serve MCP on stdio (what the Bot spawns)
 //   <name> manifest [--key-id <id>]    print the unsigned manifest as JCS text
 //   <name> app-source <id>             print a TSX app's source as served
+//   <name> package <plugin.json> <out> <platform> [--published <plugin.json>]
+//                                      fill a release's plugin.json to sign
 //   <name> --version | --help
 
 import { canonical } from "./jcs";
 import { MANIFEST_ENV, fileName } from "./manifest";
+import { UNSIGNED, run as packageRun } from "./package";
 import { type Plugin, Server, serveStdio } from "./server";
 
 const KEY_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -30,6 +33,17 @@ export async function main(plugin: Plugin, open: () => Plugin | Promise<Plugin> 
     process.stderr.write(`${plugin.name}: no TSX app ${rest[0]}\n`);
     return 2;
   }
+  if (command === "package" && (rest.length === 3 || (rest.length === 5 && rest[3] === "--published"))) {
+    const [template, out, platform, , published] = rest as [string, string, string, string?, string?];
+    try {
+      packageRun(template, out, plugin.id, plugin.name, platform, published);
+      process.stderr.write(`${plugin.name}: wrote ${out}/${UNSIGNED}\n`);
+      return 0;
+    } catch (e) {
+      process.stderr.write(`${plugin.name}: package: ${(e as Error).message}\n`);
+      return 1;
+    }
+  }
   if ((command === "--version" || command === "-V") && rest.length === 0) return print(`${plugin.name} ${plugin.version}\n`);
   if ((command === "--help" || command === "-h") && rest.length === 0) return print(usage(plugin));
   process.stderr.write(usage(plugin));
@@ -43,6 +57,12 @@ Usage: ${name} mcp                       speak MCP on stdin/stdout (what the Bot
        ${name} manifest [--key-id <id>]  print the unsigned manifest as JCS text, under
                                         publisher key id ${releaseKeyId} unless a test id is named
        ${name} app-source <id>           print a TSX app's source exactly as served
+       ${name} package <plugin.json> <out> <platform> [--published <plugin.json>]
+                                        fill the template's buwiz.files and buwiz.binaries
+                                        from <out> (${name}-<platform> and ${fileName(id)}, the signed
+                                        manifest) and write <out>/plugin.unsigned.json for
+                                        \`buwiz-broker sign-manifest --block buwiz\`; with a
+                                        published plugin.json its other platforms stay
        ${name} --version | --help
 
 Environment:

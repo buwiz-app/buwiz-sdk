@@ -6,14 +6,17 @@
 // buwiz.provision; tools are not (P7).
 //
 // The reserved tools are answered here: buwiz.provision,
-// buwiz.session.open, buwiz.session.close, buwiz.ticket.resolve and
-// buwiz.uninstall; any other buwiz.* name is -32601. Before a plugin's own
+// buwiz.session.open, buwiz.session.close, buwiz.ticket.resolve,
+// buwiz.uninstall, buwiz.account.set and buwiz.account.clear; any other
+// buwiz.* name is -32601. Pushed account tokens stay in memory and reach a
+// tool through Caller.account. Before a plugin's own
 // tool runs, Server checks its caller against the served manifest (see
 // Server.authorize).
 //
 // Nothing is logged: no argument, no subject and never the key (P4).
 
 import { createInterface } from "node:readline";
+import { type Account, Accounts } from "./accounts";
 import { type Json } from "./jcs";
 import { fromB64u, PluginKey } from "./key";
 import * as manifest from "./manifest";
@@ -27,7 +30,15 @@ export const INVALID_PARAMS = -32602;
 /** The MCP revision this server speaks (the broker's). */
 export const MCP_PROTOCOL = "2025-11-25";
 
-export const RESERVED = ["buwiz.provision", "buwiz.session.open", "buwiz.session.close", "buwiz.ticket.resolve", "buwiz.uninstall"] as const;
+export const RESERVED = [
+  "buwiz.provision",
+  "buwiz.session.open",
+  "buwiz.session.close",
+  "buwiz.ticket.resolve",
+  "buwiz.uninstall",
+  "buwiz.account.set",
+  "buwiz.account.clear",
+] as const;
 
 /** The longest session a certificate may cover: 8 hours. */
 export const CERT_MAX_MS = 8 * 3600 * 1000;
@@ -79,14 +90,18 @@ export interface Caller {
   openId?: string;
   /** The routine whose turn or query this is. */
   routine?: string;
+  /** `account`'s live token: its "default" sign-in, else any live one.
+   *  undefined: answer accountRequired(account) so the host asks the person
+   *  to sign in. */
+  account(account: string): Account | undefined;
 }
 
-export function callerOf(params: Record<string, unknown>): Caller {
+export function callerOf(params: Record<string, unknown>, accounts: Accounts = new Accounts()): Caller {
   const c = (params._meta as Record<string, unknown> | undefined)?.["buwiz/caller"] as Record<string, unknown> | undefined;
   const text = (key: string) => (typeof c?.[key] === "string" ? (c[key] as string) : undefined);
   const o = text("origin");
   const origin: Origin = o === "app" || o === "agent" || o === "routine" || o === "resolve" ? o : "unknown";
-  return { origin, app: text("app"), openId: text("open_id"), routine: text("routine") };
+  return { origin, app: text("app"), openId: text("open_id"), routine: text("routine"), account: (id: string) => accounts.get(id) };
 }
 
 /** A mini app's own half: its manifest, app sources and tools. Server does
@@ -134,6 +149,8 @@ export class Server<P extends Plugin = Plugin> {
   #key: PluginKey | undefined;
   /** open_id -> app id, for opens this process certified. */
   readonly #sessions = new Map<string, string>();
+  /** Tokens the host pushed (buwiz.account.set). */
+  readonly #accounts = new Accounts();
 
   constructor(
     readonly plugin: P,
@@ -216,7 +233,7 @@ export class Server<P extends Plugin = Plugin> {
     if (!this.#key) throw new RpcError(INVALID_REQUEST, "buwiz.provision must come first");
     const tool = this.plugin.tools().find((t) => t.name === name);
     if (!tool) throw new RpcError(INVALID_PARAMS, "no such tool");
-    const caller = callerOf(params);
+    const caller = callerOf(params, this.#accounts.snapshot());
     const refusal = this.authorize(tool, caller);
     if (refusal) return fail("permission_denied", refusal);
     try {
@@ -266,9 +283,14 @@ export class Server<P extends Plugin = Plugin> {
         const title = this.plugin.ticketTitle(typeof args.ticket === "string" ? args.ticket : "");
         return ok(title === undefined ? { valid: false } : { valid: true, title: [...title].slice(0, 120).join("") });
       }
+      case "buwiz.account.set":
+        return this.#accounts.set(args);
+      case "buwiz.account.clear":
+        return this.#accounts.clear(args);
       default:
         this.plugin.uninstall();
         this.#sessions.clear();
+        this.#accounts.forget();
         return ok({ ok: true });
     }
   }

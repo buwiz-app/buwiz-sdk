@@ -4,6 +4,8 @@
 //! <name> mcp                         serve MCP on stdio (what the Bot spawns)
 //! <name> manifest [--key-id <id>]    print the unsigned manifest as JCS text
 //! <name> app-source <id>             print a TSX app's source as served
+//! <name> package <plugin.json> <out> <platform> [--published <plugin.json>]
+//!                                    fill a release's plugin.json to sign
 //! <name> --version | --help
 //! ```
 
@@ -38,6 +40,10 @@ pub fn main<P: Plugin>(open: impl FnOnce() -> Result<P, String>) -> ExitCode {
         },
         ["manifest"] => print_manifest::<P>(P::RELEASE_KEY_ID),
         ["manifest", "--key-id", key_id] if valid_key_id(key_id) => print_manifest::<P>(key_id),
+        ["package", template, out, platform] => package::<P>(template, out, platform, None),
+        ["package", template, out, platform, "--published", published] => {
+            package::<P>(template, out, platform, Some(published))
+        }
         ["app-source", id] => match P::app_source(id) {
             Some(source) => print_text(source),
             None => {
@@ -66,6 +72,12 @@ Usage: {name} mcp                       speak MCP on stdin/stdout (what the Bot 
        {name} manifest [--key-id <id>]  print the unsigned manifest as JCS text, under
                                         publisher key id {key} unless a test id is named
        {name} app-source <id>           print a TSX app's source exactly as served
+       {name} package <plugin.json> <out> <platform> [--published <plugin.json>]
+                                        fill the template's buwiz.files and buwiz.binaries
+                                        from <out> ({name}-<platform> and {file}, the signed
+                                        manifest) and write <out>/plugin.unsigned.json for
+                                        `buwiz-broker sign-manifest --block buwiz`; with a
+                                        published plugin.json its other platforms stay
        {name} --version | --help
 
 Environment:
@@ -85,6 +97,32 @@ fn valid_key_id(id: &str) -> bool {
         && bytes
             .iter()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-')
+}
+
+fn package<P: Plugin>(
+    template: &str,
+    out: &str,
+    platform: &str,
+    published: Option<&str>,
+) -> ExitCode {
+    let result = crate::package::run(
+        std::path::Path::new(template),
+        std::path::Path::new(out),
+        P::ID,
+        P::NAME,
+        platform,
+        published.map(std::path::Path::new),
+    );
+    match result {
+        Ok(()) => {
+            eprintln!("{}: wrote {out}/{}", P::NAME, crate::package::UNSIGNED);
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{}: package: {error}", P::NAME);
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn print_manifest<P: Plugin>(key_id: &str) -> ExitCode {

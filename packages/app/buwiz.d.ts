@@ -1,5 +1,5 @@
-// Types for TSX mini apps: the `buwiz` bridge (Mini App Protocol 2.0, sdk
-// "1"), as the Bot's server/sdk/mini-app/docs/bridge.md describes it.
+// Types for TSX mini apps: the `buwiz` bridge (Mini App Protocol 1.0, sdk
+// "1"), as docs/protocol-1.0.md section 13 describes it.
 //
 // An app imports `{ buwiz } from "buwiz"` (also the global `buwiz`), and
 // only `nsh`, `nsh/base` and `buwiz`. A method whose permission the
@@ -75,6 +75,9 @@ declare module "buwiz" {
     /** Inline: size the card to `height` points (within inline.min_height ..
      *  max_height). Full screen: ignored. */
     fit(height: number): void;
+    /** Inline: the app's data is in. With inline.wait_ready the card keeps
+     *  its placeholder until this (or 3 seconds). Full screen: ignored. */
+    ready(): void;
     /** Inline: up to 3 footer buttons; [] removes them. */
     actions(list: Action[]): Promise<void>;
     /** A press of an enabled button calls `handler` with its id. Returns a
