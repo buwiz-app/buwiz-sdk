@@ -14,8 +14,8 @@ use serde_json::{Map, Value};
 
 use crate::jcs;
 
-/// The protocol this SDK implements. A 2.0 host accepts `2.0.x` only.
-pub const PROTOCOL: &str = "2.0.0";
+/// The protocol this SDK implements. A 1.0 host accepts `1.0.x` only.
+pub const PROTOCOL: &str = "1.0.0";
 /// Where the manifest is served.
 pub const MANIFEST_URI: &str = "buwiz://manifest";
 pub const MANIFEST_MIME: &str = "application/json";

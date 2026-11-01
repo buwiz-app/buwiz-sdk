@@ -6,8 +6,10 @@
 //! sources) are readable before `buwiz.provision`; tools are not (P7).
 //!
 //! The reserved tools are answered here: `buwiz.provision`,
-//! `buwiz.session.open`, `buwiz.session.close`, `buwiz.ticket.resolve`
-//! and `buwiz.uninstall`; any other `buwiz.*` name is -32601. Before a
+//! `buwiz.session.open`, `buwiz.session.close`, `buwiz.ticket.resolve`,
+//! `buwiz.uninstall`, `buwiz.account.set` and `buwiz.account.clear`; any
+//! other `buwiz.*` name is -32601. Pushed account tokens stay in memory
+//! and reach a tool through [`Caller::account`]. Before a
 //! plugin's own tool runs, [`Server`] checks its caller against the served
 //! manifest (see [`Server::authorize`]).
 //!
@@ -18,6 +20,7 @@ use std::io::{BufRead, Write};
 
 use serde_json::{Map, Value, json};
 
+use crate::accounts::{Account, Accounts};
 use crate::key::PluginKey;
 use crate::manifest::{self, Served};
 use crate::{b64, fail, ok};
@@ -31,12 +34,14 @@ pub const INVALID_PARAMS: i64 = -32602;
 pub const MCP_PROTOCOL: &str = "2025-11-25";
 
 /// The reserved tools.
-pub const RESERVED: [&str; 5] = [
+pub const RESERVED: [&str; 7] = [
     "buwiz.provision",
     "buwiz.session.open",
     "buwiz.session.close",
     "buwiz.ticket.resolve",
     "buwiz.uninstall",
+    "buwiz.account.set",
+    "buwiz.account.clear",
 ];
 
 /// The longest session a certificate may cover: 8 hours.
@@ -84,6 +89,8 @@ pub struct Caller {
     pub open_id: Option<String>,
     /// The routine whose turn or query this is.
     pub routine: Option<String>,
+    /// The accounts the host has pushed (in memory; `Debug` hides tokens).
+    pub accounts: Accounts,
 }
 
 impl Caller {
@@ -110,7 +117,15 @@ impl Caller {
             app: text("app"),
             open_id: text("open_id"),
             routine: text("routine"),
+            accounts: Accounts::default(),
         }
+    }
+
+    /// `account`'s live token: its `default` sign-in, else any live one.
+    /// `None`: answer [`crate::account_required`] so the host asks the
+    /// person to sign in.
+    pub fn account(&self, account: &str) -> Option<&Account> {
+        self.accounts.get(account)
     }
 }
 
@@ -160,6 +175,8 @@ pub struct Server<P: Plugin> {
     key: Option<PluginKey>,
     /// open_id -> app id, for opens this process certified.
     sessions: HashMap<String, String>,
+    /// Tokens the host pushed (`buwiz.account.set`).
+    accounts: Accounts,
 }
 
 impl<P: Plugin> Server<P> {
@@ -176,6 +193,7 @@ impl<P: Plugin> Server<P> {
             served,
             key: None,
             sessions: HashMap::new(),
+            accounts: Accounts::default(),
         }
     }
 
@@ -285,7 +303,8 @@ impl<P: Plugin> Server<P> {
         let Some(tool) = self.plugin.tools().into_iter().find(|t| t.name == name) else {
             return Err((INVALID_PARAMS, "no such tool".into()));
         };
-        let caller = Caller::of(params);
+        let mut caller = Caller::of(params);
+        caller.accounts = self.accounts.clone();
         if let Err(message) = self.authorize(&tool, &caller) {
             return Ok(fail("permission_denied", &message));
         }
@@ -360,9 +379,12 @@ impl<P: Plugin> Server<P> {
                     None => ok(json!({ "valid": false })),
                 }
             }
+            "buwiz.account.set" => self.accounts.set(arguments),
+            "buwiz.account.clear" => self.accounts.clear(arguments),
             _ => {
                 self.plugin.uninstall();
                 self.sessions.clear();
+                self.accounts.forget();
                 ok(json!({ "ok": true }))
             }
         })

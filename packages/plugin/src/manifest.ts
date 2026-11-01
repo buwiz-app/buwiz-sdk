@@ -14,8 +14,8 @@ import { dirname, join } from "node:path";
 import { type Json, canonical, parseIJson, sha256Hex, sha256Jcs } from "./jcs";
 import type { Tool } from "./server";
 
-/** The protocol this SDK implements. A 2.0 host accepts 2.0.x only. */
-export const PROTOCOL = "2.0.0";
+/** The protocol this SDK implements. A 1.0 host accepts 1.0.x only. */
+export const PROTOCOL = "1.0.0";
 export const MANIFEST_URI = "buwiz://manifest";
 export const MANIFEST_MIME = "application/json";
 /** A TSX app's entry is buwiz-app://<id>. */

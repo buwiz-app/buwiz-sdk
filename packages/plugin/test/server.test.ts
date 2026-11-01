@@ -4,7 +4,9 @@
 
 import { expect, test } from "bun:test";
 import {
+  Accounts,
   type Args,
+  type Caller,
   type Manifest,
   type Plugin,
   PROTOCOL,
@@ -14,6 +16,7 @@ import {
   Server,
   Tickets,
   type Tool,
+  accountRequired,
   b64u,
   fail,
   isTicket,
@@ -83,8 +86,13 @@ class Toy implements Plugin {
     ];
   }
 
-  call(tool: string, args: Args) {
+  call(tool: string, args: Args, caller: Caller) {
     this.calls.push(tool);
+    if (typeof args.needs === "string") {
+      // a tool that reads with a pushed token answers its subject, never the token
+      const held = caller.account(args.needs);
+      return held ? ok({ subject: held.subject, scheme: held.authorization().split(" ")[0] ?? "" }) : accountRequired(args.needs);
+    }
     if (tool === "toy_resolve") return ok({ result: "token", ticket: this.tickets.issue(String(args.value)), title: String(args.value) });
     if (tool === "toy_add") return ok({ added: true });
     if (args.ticket !== undefined && this.tickets.subject(args.ticket) === undefined) return fail("not_found", "That item is no longer available.");
@@ -119,7 +127,7 @@ class Run {
 
   provision() {
     const key = PluginKey.fromSeed(SEED);
-    return this.call("buwiz.provision", { protocol: "2.0.1", plugin: this.toy.id, key: { alg: "ed25519", seed: b64u(SEED) }, pub: key.public() });
+    return this.call("buwiz.provision", { protocol: "1.0.1", plugin: this.toy.id, key: { alg: "ed25519", seed: b64u(SEED) }, pub: key.public() });
   }
 
   open(app: string, byte: number) {
@@ -145,7 +153,7 @@ test("nothing runs before provision, and provision answers the manifest hash", a
   expect(result(await run.provision()).ok).toBe(true);
   const other = PluginKey.fromSeed(new Uint8Array(32).fill(3));
   const again = await run.call("buwiz.provision", {
-    protocol: "2.0.0",
+    protocol: "1.0.0",
     plugin: run.toy.id,
     key: { alg: "ed25519", seed: b64u(new Uint8Array(32).fill(3)) },
     pub: other.public(),
@@ -157,7 +165,7 @@ test("provision refuses another plugin and leaves the protocol to the manifest",
   const run = new Run();
   const pub = PluginKey.fromSeed(SEED).public();
   const args = (plugin: string, protocol: string) => ({ protocol, plugin, key: { alg: "ed25519", seed: b64u(SEED) }, pub });
-  expect((await run.call("buwiz.provision", args("app.buwiz.other", "2.0.0"))).result.isError).toBe(true);
+  expect((await run.call("buwiz.provision", args("app.buwiz.other", "1.0.0"))).result.isError).toBe(true);
   // the Bot decides compatibility from the manifest's protocol
   expect(result(await run.call("buwiz.provision", args("app.buwiz.toy", "2.1.0"))).ok).toBe(true);
 });
@@ -215,6 +223,78 @@ test("tickets resolve to titles and uninstall forgets them", async () => {
   expect(result(await run.call("buwiz.ticket.resolve", { ticket }))).toEqual({ valid: false });
 });
 
+test("pushed account tokens reach a tool and stay in memory", async () => {
+  const TOKEN = "ya29.synthetic-token";
+  const push = {
+    account: "google",
+    label: "default",
+    provider: "google",
+    subject: "person@example.com",
+    scopes: ["https://example.com/read"],
+    access_token: TOKEN,
+    token_type: "Bearer",
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+  };
+  const run = new Run();
+  // nothing before provision, accounts included
+  expect((await run.call("buwiz.account.set", push)).error.code).toBe(-32600);
+  await run.provision();
+  const ask = () => run.call("toy_list", { needs: "google" }, { origin: "agent" });
+  const before = await ask();
+  expect(before.result.isError).toBe(true);
+  expect(result(before)).toEqual({ code: "account_required", account: "google" });
+
+  const set = await run.call("buwiz.account.set", push);
+  expect(result(set)).toEqual({ ok: true });
+  expect(JSON.stringify(set)).not.toContain(TOKEN);
+  const after = await ask();
+  expect(result(after)).toEqual({ subject: "person@example.com", scheme: "Bearer" });
+  expect(JSON.stringify(after)).not.toContain(TOKEN);
+
+  expect(result(await run.call("buwiz.account.clear", { account: "google", label: "default" }))).toEqual({ ok: true });
+  expect(result(await ask()).code).toBe("account_required");
+
+  // an expired push is no token; uninstall forgets what is held
+  await run.call("buwiz.account.set", { account: "google", label: "default", access_token: TOKEN, expires_at: 1 });
+  expect(result(await ask()).code).toBe("account_required");
+  await run.call("buwiz.account.set", { account: "google", label: "work", access_token: TOKEN });
+  expect(result(await ask()).scheme).toBe("Bearer");
+  await run.call("buwiz.uninstall", {});
+  expect(result(await ask()).code).toBe("account_required");
+  // a malformed push is refused without the token
+  const bad = await run.call("buwiz.account.set", { account: "google", access_token: TOKEN });
+  expect(bad.result.isError).toBe(true);
+  expect(JSON.stringify(bad)).not.toContain(TOKEN);
+});
+
+test("the account store: default label first, expiry, refusals, nothing leaks", () => {
+  const TOKEN = "ya29.synthetic-token";
+  const a = new Accounts();
+  const push = (label: string, token: string, expires_at: unknown) =>
+    a.set({ account: "google", label, provider: "google", access_token: token, token_type: "bearer", expires_at } as Args);
+  push("work", "t-work", 500);
+  push("default", TOKEN, 150);
+  expect(a.get("google", 100)?.label).toBe("default");
+  expect(a.get("google", 100)?.authorization()).toBe(`Bearer ${TOKEN}`);
+  expect(a.get("google", 160)?.label).toBe("work");
+  expect(a.get("other", 100)).toBeUndefined();
+  expect(JSON.stringify(a)).not.toContain(TOKEN);
+  expect(Bun.inspect(a.get("google", 100))).not.toContain(TOKEN);
+  for (const bad of [
+    { label: "default", access_token: TOKEN },
+    { account: "google", access_token: TOKEN },
+    { account: "google", label: "default" },
+    { account: "google", label: "default", access_token: TOKEN, expires_at: "soon" },
+    { account: "google", label: "default", access_token: TOKEN, expires_at: 1.5 },
+  ]) {
+    const r = a.set(bad as Args);
+    expect(r.isError).toBe(true);
+    expect(JSON.stringify(r)).not.toContain(TOKEN);
+  }
+  expect(a.clear({ account: "google" }).isError).toBe(true);
+  expect(accountRequired("google").structuredContent).toEqual({ code: "account_required", account: "google" });
+});
+
 test("an unknown reserved name is method-not-found; a throwing tool is an internal error", async () => {
   const run = new Run();
   await run.provision();
@@ -234,6 +314,7 @@ test("lists tools and serves the manifest and TSX sources only", async () => {
   expect(init.result.instructions).toBe("Toy keeps a list.");
   const names = (await run.rpc("tools/list", {})).result.tools.map((t: Tool) => t.name);
   expect(names).toEqual([...RESERVED, "toy_list", "toy_add", "toy_resolve"]);
+  expect(RESERVED.length).toBe(7);
   const uris = (await run.rpc("resources/list", {})).result.resources.map((r: { uri: string }) => r.uri);
   expect(uris).toEqual(["buwiz://manifest", "buwiz-app://board"]);
   expect((await run.rpc("resources/read", { uri: "buwiz-app://board" })).result.contents[0].text).toBe(APP);
@@ -246,11 +327,11 @@ test("the local manifest check finds the usual mistakes", () => {
   const toy = new Toy();
   expect(problems(toy.manifest("k"), toy.tools())).toEqual([]);
   const bad = toy.manifest("k");
-  (bad as { protocol: string }).protocol = "1.0.0";
+  (bad as { protocol: string }).protocol = "2.1.0";
   bad.scopes![0]!.resolve = "toy_add";
   bad.apps![0]!.permissions = { tools: ["toy_gone"] };
   expect(problems(bad, toy.tools())).toEqual([
-    "protocol must be 2.0.0",
+    "protocol must be 1.0.0",
     "scopes[0].resolve names toy_add, which is not read-only",
     "apps[0].permissions.tools names toy_gone, which is not a tool",
   ]);
