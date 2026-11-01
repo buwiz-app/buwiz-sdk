@@ -1429,7 +1429,7 @@ dependencies = [
 [[package]]
 name = "nsh-core"
 version = "0.3.0"
-source = "git+https://github.com/hexuria/nsh?tag=rox-2026-11-01#758b55f25c82b9fcb6a180e0fa248789aa4dc4d3"
+source = "git+https://github.com/hexuria/nsh?rev=f1461478d3768fb5da872cb697f0b0a48564ee91#f1461478d3768fb5da872cb697f0b0a48564ee91"
 dependencies = [
  "cap-std",
  "crc32fast",
@@ -1459,7 +1459,7 @@ dependencies = [
 [[package]]
 name = "nsh-engine"
 version = "0.3.0"
-source = "git+https://github.com/hexuria/nsh?tag=rox-2026-11-01#758b55f25c82b9fcb6a180e0fa248789aa4dc4d3"
+source = "git+https://github.com/hexuria/nsh?rev=f1461478d3768fb5da872cb697f0b0a48564ee91#f1461478d3768fb5da872cb697f0b0a48564ee91"
 dependencies = [
  "crossbeam-channel",
  "libc",
@@ -1477,7 +1477,7 @@ dependencies = [
 [[package]]
 name = "nsh-js"
 version = "0.3.0"
-source = "git+https://github.com/hexuria/nsh?tag=rox-2026-11-01#758b55f25c82b9fcb6a180e0fa248789aa4dc4d3"
+source = "git+https://github.com/hexuria/nsh?rev=f1461478d3768fb5da872cb697f0b0a48564ee91#f1461478d3768fb5da872cb697f0b0a48564ee91"
 dependencies = [
  "futures-util",
  "getrandom 0.4.3",
@@ -1498,7 +1498,7 @@ dependencies = [
 [[package]]
 name = "nsh-macros"
 version = "0.3.0"
-source = "git+https://github.com/hexuria/nsh?tag=rox-2026-11-01#758b55f25c82b9fcb6a180e0fa248789aa4dc4d3"
+source = "git+https://github.com/hexuria/nsh?rev=f1461478d3768fb5da872cb697f0b0a48564ee91#f1461478d3768fb5da872cb697f0b0a48564ee91"
 dependencies = [
  "imagesize",
  "proc-macro2",
@@ -1510,7 +1510,7 @@ dependencies = [
 [[package]]
 name = "nsh-package"
 version = "0.3.0"
-source = "git+https://github.com/hexuria/nsh?tag=rox-2026-11-01#758b55f25c82b9fcb6a180e0fa248789aa4dc4d3"
+source = "git+https://github.com/hexuria/nsh?rev=f1461478d3768fb5da872cb697f0b0a48564ee91#f1461478d3768fb5da872cb697f0b0a48564ee91"
 dependencies = [
  "base64",
  "ed25519-dalek 2.2.0",

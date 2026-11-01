@@ -21,8 +21,8 @@ mini app uses it.
    `BUWIZ_PLUGIN_DEBUG=1`.
 6. **Rust and TypeScript folders match.** `crates/<part>` beside `packages/<part>` (`plugin`, `app`); the published
    Rust names carry the `buwiz-` prefix that `@buwiz/sdk` gives the TypeScript ones. `crates/app` is the `buwiz`
-   bridge of `packages/app` in Rust, for native screens; it depends on nsh (pinned by tag) and on nothing of the
-   Bot's, and the Bot team owns its API.
+   bridge of `packages/app` in Rust, for native screens; it depends on nsh (pinned by rev, to the commit the Bot's
+   submodule is on) and on nothing of the Bot's, and the Bot team owns its API.
 
 ## Gates
 

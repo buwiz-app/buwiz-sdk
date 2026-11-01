@@ -17,13 +17,14 @@ only gives them a Rust shape.
 
 This crate is the SDK's `crates/app`, beside `crates/plugin`
 (`buwiz-plugin`) and mirroring `packages/app`. It depends on nothing of
-Buwiz Bot's, only on nsh, pinned by tag.
+Buwiz Bot's, only on nsh, pinned by rev to the commit the Bot's nsh
+submodule is on.
 
 ## A plugin's screens crate
 
 A first-party plugin keeps its native screens in a crate of its own, in the
 plugin's repository. The crate depends on this one and on `nsh-core`
-from the same nsh tag, and it exports its screens:
+from the same nsh rev, and it exports its screens:
 
 ```rust
 use buwiz_app::{ABI, Action, Bridge, ScreenDef};
