@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use nsh_core::element::{
-    AnyElement, AnyValue, Children, Component, IntoElement, NoEvent, PropError, PropSpec, Props,
-    Root, Scope, Slot, TsTypes, catch_error, view,
+    AnyElement, AnyValue, Children, Component, IntoElement, NoEvent, ParentElement, PropError,
+    PropSpec, Props, Root, Scope, Slot, Styled, TsTypes, catch_error, view,
 };
 
 use crate::Bridge;
@@ -82,13 +82,16 @@ impl Component for Boundary {
             return view().into_element();
         };
         let bridge = screen.bridge.clone();
-        catch_error(
-            move || Body::element(ScreenProps(Some(screen.clone()))),
-            move |error, _| {
-                bridge.fail(&error.message);
-                view()
-            },
-        )
+        view()
+            .flex_1()
+            .child(catch_error(
+                move || Body::element(ScreenProps(Some(screen.clone()))),
+                move |error, _| {
+                    bridge.fail(&error.message);
+                    view()
+                },
+            ))
+            .into_element()
     }
 }
 

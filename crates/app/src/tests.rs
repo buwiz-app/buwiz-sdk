@@ -373,3 +373,55 @@ fn a_panic_in_a_bridge_task_reaches_the_host() {
     );
     assert_eq!(*host.failed.lock().unwrap(), ["the call broke"]);
 }
+
+#[test]
+fn a_screens_root_fills_the_surface() {
+    // A screen's root that grows (`flex-1`, a TSX app's `flex: 1`) fills
+    // the view the host gives it, as a TSX app's root does: what holds
+    // it (the boundary, the screen's body) has the surface's size, not
+    // its content's, or every view of the screen lays out 0 high and the
+    // host draws nothing.
+    use nsh_core::element::{ParentElement, Styled, view};
+    use nsh_core::geometry::{Size, px};
+    let (_, b) = bridge(vec![]);
+    let mut config =
+        EngineConfig::new(App::Rust(root(b, |_| view().flex_1().child(text("fills")))));
+    config.viewport = Size::new(px(360.0), px(480.0));
+    let (tx, rx) = mpsc::channel();
+    let engine = Engine::start(config, || ApproxTextEngine, Sink(tx)).expect("engine starts");
+    let (mut parents, mut heights, mut shown) = (
+        std::collections::HashMap::new(),
+        std::collections::HashMap::new(),
+        None,
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if let Ok(batch) = rx.recv_timeout(Duration::from_millis(20)) {
+            for item in batch.items {
+                match item {
+                    MountItem::Insert { parent, child, .. } => {
+                        parents.insert(child, parent);
+                    }
+                    MountItem::Frame { id, frame } => {
+                        heights.insert(id, frame.size.height.0);
+                    }
+                    MountItem::Text { id, text, .. } if &*text.text == "fills" => shown = Some(id),
+                    _ => {}
+                }
+            }
+        } else if shown.is_some() {
+            break;
+        }
+    }
+    drop(engine);
+    let text = shown.expect("the screen shows");
+    // every view from the text's up to the surface's root
+    let mut chain = Vec::new();
+    let mut at = parents[&text];
+    while at != nsh_core::ROOT_ID {
+        chain.push(heights.get(&at).copied().unwrap_or(0.0));
+        at = parents[&at];
+    }
+    assert!(!chain.is_empty());
+    assert!(chain.iter().all(|h| *h == 480.0), "{chain:?}");
+}
