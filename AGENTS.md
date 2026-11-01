@@ -1,7 +1,8 @@
 # AGENTS.md
 
-The Buwiz SDK: the shared half of every Buwiz Bot mini app, in Rust (`crates/plugin`, the crate `buwiz-plugin`) and TypeScript
-(`packages/plugin`, `packages/app`). The README says what each part is and how a mini app uses it.
+The Buwiz SDK: the shared half of every Buwiz Bot mini app, in Rust (`crates/plugin`, the crate `buwiz-plugin`; `crates/app`,
+the crate `buwiz-app`) and TypeScript (`packages/plugin`, `packages/app`). The README says what each part is and how a
+mini app uses it.
 
 ## Invariants
 
@@ -18,9 +19,10 @@ The Buwiz SDK: the shared half of every Buwiz Bot mini app, in Rust (`crates/plu
 5. **Secrets stay put.** A provisioned seed is never logged, printed, serialized or put in an error, and nothing
    logs tool arguments or subjects (P4). The TypeScript server writes a tool's thrown error to stderr only under
    `BUWIZ_PLUGIN_DEBUG=1`.
-6. **Rust and TypeScript folders match.** `crates/<part>` beside `packages/<part>` (`plugin`, and `app` when the
-   native-screen crate arrives); the published Rust names carry the `buwiz-` prefix that `@buwiz/sdk` gives the
-   TypeScript ones. `crates/app` is the Bot team's to write.
+6. **Rust and TypeScript folders match.** `crates/<part>` beside `packages/<part>` (`plugin`, `app`); the published
+   Rust names carry the `buwiz-` prefix that `@buwiz/sdk` gives the TypeScript ones. `crates/app` is the `buwiz`
+   bridge of `packages/app` in Rust, for native screens; it depends on nsh (pinned by rev, to the commit the Bot's
+   submodule is on) and on nothing of the Bot's, and the Bot team owns its API.
 
 ## Gates
 

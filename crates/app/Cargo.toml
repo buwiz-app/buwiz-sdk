@@ -1,0 +1,33 @@
+[package]
+name = "buwiz-app"
+version = "0.1.0"
+description = "Native screens for first-party Buwiz Bot mini apps: the screen definition and the bridge (the `buwiz` global, in Rust)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "buwiz_app"
+path = "src/lib.rs"
+
+[dependencies]
+# the Bot's nsh: the commit its submodule is on (hexuria/nsh tags every
+# `rox` tip before a rebuild, so the rev stays fetchable)
+nsh-core = { git = "https://github.com/hexuria/nsh", rev = "f1461478d3768fb5da872cb697f0b0a48564ee91" }
+serde_json = "1"
+# the host answers on its own threads; the screen awaits on the engine
+# thread (nsh's tasks run inside a tokio context)
+tokio = { version = "1", features = ["sync"] }
+# `pick_file`'s bytes come base64-encoded, as the TSX bridge's do
+base64 = "0.22"
+
+[dev-dependencies]
+nsh-engine = { git = "https://github.com/hexuria/nsh", rev = "f1461478d3768fb5da872cb697f0b0a48564ee91" }
+
+# Not the workspace's lints: those deny floats, for signed objects. A screen
+# lays out in nsh's f32 pixels (`Viewport`, `fit`) and signs nothing, so
+# only `unsafe_code` carries over.
+[lints.rust]
+unsafe_code = "forbid"
