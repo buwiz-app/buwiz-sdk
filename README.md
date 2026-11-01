@@ -16,14 +16,20 @@ To start a new mini app, don't start here: use a template, which already depends
 
 ## What is here
 
-| Path                     | What                                                                                                                         |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `crates/buwiz-plugin/`   | The plugin half in Rust: `Plugin`, `Server`, `cli::main`, `Tickets`, `manifest`, `testing::Harness`                          |
-| `packages/plugin/`       | The same in TypeScript (`@buwiz/sdk/plugin`): `Plugin`, `Server`, `main`, `Tickets`, `Harness`, the manifest's types         |
-| `packages/app/`          | Types for TSX screens (`@buwiz/sdk/app`): the `buwiz` bridge                                                                 |
-| `crates/buwiz-mini-app/` | The native-screen half in Rust: `ScreenDef` and `Bridge`, owned by the Bot's team; [coming](crates/buwiz-mini-app/README.md) |
-| `vectors/`               | Canonical JSON and signing vectors both halves reproduce byte for byte (`jcs.json` is the Bot's own)                         |
-| `tools/check-all.sh`     | Every gate, both halves                                                                                                      |
+| Path                 | What                                                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `crates/plugin/`     | The plugin half in Rust (crate `buwiz-plugin`): `Plugin`, `Server`, `cli::main`, `Tickets`, `manifest`, `testing::Harness` |
+| `packages/plugin/`   | The same in TypeScript (`@buwiz/sdk/plugin`): `Plugin`, `Server`, `main`, `Tickets`, `Harness`, the manifest's types       |
+| `packages/app/`      | Types for TSX screens (`@buwiz/sdk/app`): the `buwiz` bridge                                                               |
+| `vectors/`           | Canonical JSON and signing vectors both halves reproduce byte for byte (`jcs.json` is the Bot's own)                       |
+| `tools/check-all.sh` | Every gate, both halves                                                                                                    |
+
+## Coming: native screens
+
+`crates/app` (crate `buwiz-app`) will be the native-screen half in Rust: `ScreenDef` and `Bridge`, for screens
+compiled into the Bot in place of TSX (first-party publishers only). The Bot's team is writing it in
+`buwiz-bot/buwiz-bot` and moves it here once its API settles; until then a native app's manifest entry verifies,
+and the Bot shows "this screen needs a newer Buwiz Bot" when it opens.
 
 ## Use it
 

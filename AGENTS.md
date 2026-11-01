@@ -1,13 +1,13 @@
 # AGENTS.md
 
-The Buwiz SDK: the shared half of every Buwiz Bot mini app, in Rust (`crates/buwiz-plugin`) and TypeScript
+The Buwiz SDK: the shared half of every Buwiz Bot mini app, in Rust (`crates/plugin`, the crate `buwiz-plugin`) and TypeScript
 (`packages/plugin`, `packages/app`). The README says what each part is and how a mini app uses it.
 
 ## Invariants
 
 1. **Two halves, one behavior.** The Rust crate and the TypeScript package expose the same API under each
    language's names and answer every request identically. A change to one half is made to the other in the same
-   commit, with a test in each (`crates/buwiz-plugin/tests/server.rs` and `packages/plugin/test/server.test.ts`
+   commit, with a test in each (`crates/plugin/tests/server.rs` and `packages/plugin/test/server.test.ts`
    run the same cases).
 2. **The bytes are the Bot's.** Canonical JSON, signatures, fingerprints and digests must equal the broker's.
    `vectors/` is the proof: `jcs.json` is copied unchanged from the Bot (`server/test/fixtures/jcs-vectors.json`),
@@ -18,8 +18,9 @@ The Buwiz SDK: the shared half of every Buwiz Bot mini app, in Rust (`crates/buw
 5. **Secrets stay put.** A provisioned seed is never logged, printed, serialized or put in an error, and nothing
    logs tool arguments or subjects (P4). The TypeScript server writes a tool's thrown error to stderr only under
    `BUWIZ_PLUGIN_DEBUG=1`.
-6. **`crates/buwiz-mini-app` belongs to the Bot's team.** Leave its placeholder alone until that team moves the
-   crate in.
+6. **Rust and TypeScript folders match.** `crates/<part>` beside `packages/<part>` (`plugin`, and `app` when the
+   native-screen crate arrives); the published Rust names carry the `buwiz-` prefix that `@buwiz/sdk` gives the
+   TypeScript ones. `crates/app` is the Bot team's to write.
 
 ## Gates
 
