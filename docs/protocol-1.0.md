@@ -474,7 +474,8 @@ strings. In `command`, `args` and `env` values the host replaces `${PLUGIN_ROOT}
 | `signature` | yes | Section 5.2, over all of `plugin.json` without `buwiz.signature`.                                                                                                     |
 
 `asset` is a release asset name (section 4); `sha256` is 64 lowercase hex of the file's bytes; `path` is an
-install path.
+install path. A listed file MAY sit in a binary's folder, for example `bin/<plugin id>.manifest.json` beside
+`bin/<binary>`; only the binary's own `path` is excluded.
 
 The signature covers the mini app's command line, its skills list and every hash, so nothing in the folder
 can change without a new signature. The served `buwiz://manifest` keeps its own signature, and both are
@@ -1288,7 +1289,8 @@ The host pushes; the plugin never asks. The plugin learns account state only fro
 }
 ```
 
-`expires_at` is unix seconds. The refresh token is never sent. Answer: `{"ok": true}`.
+`expires_at` is an integer: unix seconds. The host never sends a fraction, and a plugin MAY refuse one with
+`invalid_args`. The refresh token is never sent. Answer: `{"ok": true}`.
 
 `buwiz.account.clear`, after sign-out, removal or a failed refresh: `{"account": "google", "label":
 "default"}`. Answer: `{"ok": true}`.
@@ -1296,6 +1298,8 @@ The host pushes; the plugin never asks. The plugin learns account state only fro
 - While the plugin runs the host refreshes each connected account 5 minutes before `expires_at` and pushes
   again. At spawn an account within 5 minutes of expiry is refreshed first. A failed refresh sets `expired`,
   pushes `clear` and shows "Needs sign-in".
+- The host calls these tools only on a plugin that declares accounts, and only for a declared account. A plugin
+  that declares none MAY still answer them.
 - A plugin that declares accounts MUST answer both tools; `-32601` from either stops the plugin with
   `plugin_invalid`. A refusal is logged and does not stop it.
 - The plugin keeps tokens in memory only and MUST NOT log them.
@@ -1306,6 +1310,8 @@ A tool that needs an account it does not hold answers `isError: true` with `stru
 `{"code": "account_required", "account": "<account id>"}`. When the account is one the package declares, the
 host posts one pending sign-in card per chat and account, and tells the model the person must sign in first and
 that it cannot sign in for them. Through the bridge the same answer rejects `tool_error`.
+
+The answer MAY carry other keys, such as `message`. The host ignores them: the model gets the host's own line.
 
 ## 21. Storage
 
