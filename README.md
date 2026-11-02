@@ -102,11 +102,14 @@ manifest and one binary per platform, as flat GitHub release assets.
 1. `<binary> manifest > manifest.json`, then sign it as `<out>/<plugin id>.manifest.json`
    (`buwiz-broker sign-manifest manifest.json --keychain <key id> --out …`).
 2. Put this platform's build in `<out>` as `<binary>-<os>-<arch>` (e.g. `notes-mini-app-macos-aarch64`).
-3. `<binary> package package/plugin.json <out> <os>-<arch>` fills the template's `buwiz.files` (the manifest at
-   `bin/<plugin id>.manifest.json`, plus any file it lists by `asset`) and `buwiz.binaries` (`bin/<binary>`), each
-   with its SHA-256, adds an `mcpServers` entry for `buwiz.server` when the template has none, and writes
-   `<out>/plugin.unsigned.json`. Another platform's run passes the published `plugin.json` with `--published`
-   to keep its binaries.
+3. `<binary> package package/plugin.json <out> <os>-<arch>` reads the signed manifest from `<out>`, so step 1
+   comes first. The manifest decides the block's `protocol`, `id`, `short`, `version` and `publisher`, and
+   `plugin.json`'s `version`: the template need not carry them, and a release bumps the version in one place, the
+   manifest. It fills `buwiz.files` (the manifest at `bin/<plugin id>.manifest.json`, plus any file the template
+   lists by `asset`) and `buwiz.binaries` (`bin/<binary>`), each with its SHA-256, and adds an `mcpServers` entry
+   for `buwiz.server` when the template has none. It refuses a mini app entry that is not a stdio server running
+   `${PLUGIN_ROOT}/bin/<binary>`. It writes `<out>/plugin.unsigned.json`. Another platform's run passes the
+   published `plugin.json` with `--published` to keep its binaries.
 4. `buwiz-broker sign-manifest <out>/plugin.unsigned.json --block buwiz --keychain <key id> --out <out>/plugin.json`.
 5. Upload `plugin.json`, the manifest and the binaries. Publish a pre-release first when a switch is coordinated:
    the Bot's install reads the latest release, which skips pre-releases.
@@ -117,6 +120,9 @@ A package that declares `buwiz.accounts` gets their tokens pushed (`buwiz.accoun
 protocol 1.0 section 20). The server keeps them in memory; a tool reads one with `caller.account("<id>")` (the
 `default` sign-in first, then any live one) and answers `account_required("<id>")` / `accountRequired("<id>")`
 when there is none, so the Bot asks the person to sign in. Never log a token or put it in an answer.
+
+In tests, `Harness` signs in and out as the host does: `sign_in("<id>", "<synthetic token>")` / `signIn(…)`,
+`sign_in_with` / `signInWith` for another label, scopes or expiry, and `sign_out` / `signOut`.
 
 ## What the server checks for you
 

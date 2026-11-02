@@ -8,10 +8,15 @@
 //! let mut h = Harness::new(Hello::default());
 //! let greeting = h.agent("hello_greet", serde_json::json!({})).unwrap();
 //! assert_eq!(greeting["greeting"], "Hello, world");
+//!
+//! // as the host does after the person signs in, and after sign-out
+//! h.sign_in("google", "synthetic-token");
+//! h.sign_out("google");
 //! ```
 
 use serde_json::{Value, json};
 
+use crate::accounts::DEFAULT_LABEL;
 use crate::key::PluginKey;
 use crate::manifest::{self, Served};
 use crate::{Plugin, Server, b64};
@@ -144,5 +149,47 @@ impl<P: Plugin> Harness<P> {
         );
         assert!(reply.is_ok(), "open {app}: {reply:?}");
         open_id
+    }
+
+    /// Sign in to `account` as the host does after the person signs in:
+    /// `buwiz.account.set` with label `default`, provider `google`, subject
+    /// `person@example.com`, no scopes, `Bearer` and no expiry. Use a
+    /// synthetic token.
+    pub fn sign_in(&mut self, account: &str, access_token: &str) {
+        self.sign_in_with(json!({ "account": account, "access_token": access_token }));
+    }
+
+    /// `buwiz.account.set` with `push`'s fields over [`Harness::sign_in`]'s
+    /// defaults, e.g. another `label`, `scopes` or an `expires_at`.
+    pub fn sign_in_with(&mut self, push: Value) {
+        let mut args = json!({ "label": DEFAULT_LABEL, "provider": "google",
+                               "subject": "person@example.com", "scopes": [], "token_type": "Bearer" });
+        if let (Some(args), Some(push)) = (args.as_object_mut(), push.as_object()) {
+            args.extend(push.clone());
+        }
+        let reply = self.call("buwiz.account.set", args, Value::Null);
+        // the reply never carries the token, so it can be shown
+        assert!(
+            matches!(&reply, Ok(r) if r["ok"] == true),
+            "sign in: {reply:?}"
+        );
+    }
+
+    /// Sign `account`'s `default` sign-in out (`buwiz.account.clear`).
+    pub fn sign_out(&mut self, account: &str) {
+        self.sign_out_label(account, DEFAULT_LABEL);
+    }
+
+    /// Sign one labelled sign-in of `account` out.
+    pub fn sign_out_label(&mut self, account: &str, label: &str) {
+        let reply = self.call(
+            "buwiz.account.clear",
+            json!({ "account": account, "label": label }),
+            Value::Null,
+        );
+        assert!(
+            matches!(&reply, Ok(r) if r["ok"] == true),
+            "sign out: {reply:?}"
+        );
     }
 }

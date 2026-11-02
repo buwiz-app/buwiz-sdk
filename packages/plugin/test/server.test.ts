@@ -346,3 +346,18 @@ test("the harness provisions, and calls as the model, a resolve, a routine or an
   expect(await h.app("fast", "toy_add")).toEqual({ added: true });
   await expect(h.app("board", "toy_add")).rejects.toMatchObject({ code: "permission_denied" });
 });
+
+test("the harness signs in and out as the host does", async () => {
+  const { Harness } = await import("../src");
+  const TOKEN = "ya29.synthetic-token";
+  const h = await Harness.start(new Toy());
+  const needs = { needs: "google" };
+  await expect(h.agent("toy_list", needs)).rejects.toMatchObject({ code: "account_required" });
+  await h.signIn("google", TOKEN);
+  expect(await h.agent("toy_list", needs)).toEqual({ subject: "person@example.com", scheme: "Bearer" });
+  await h.signInWith({ account: "google", label: "work", access_token: TOKEN, subject: "work@example.com" });
+  await h.signOut("google");
+  expect(await h.agent("toy_list", needs)).toMatchObject({ subject: "work@example.com" });
+  await h.signOut("google", "work");
+  await expect(h.agent("toy_list", needs)).rejects.toMatchObject({ code: "account_required" });
+});
