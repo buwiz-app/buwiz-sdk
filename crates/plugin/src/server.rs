@@ -90,7 +90,9 @@ pub struct Caller {
     /// The routine whose turn or query this is.
     pub routine: Option<String>,
     /// The accounts the host has pushed (in memory; `Debug` hides tokens).
-    pub accounts: Accounts,
+    /// Private: a tool reads one through [`Caller::account`], and only the
+    /// host's pushes change them.
+    accounts: Accounts,
 }
 
 impl Caller {

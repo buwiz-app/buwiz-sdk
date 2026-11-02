@@ -406,6 +406,38 @@ fn pushed_account_tokens_reach_a_tool_and_stay_in_memory() {
 }
 
 #[test]
+fn the_harness_signs_in_and_out_as_the_host_does() {
+    use buwiz_plugin::testing::Harness;
+    const TOKEN: &str = "ya29.synthetic-token";
+    let mut h = Harness::new(Toy::default());
+    let needs = || json!({ "needs": "google" });
+    assert_eq!(
+        h.agent("toy_list", needs()).unwrap_err()["code"],
+        "account_required"
+    );
+    h.sign_in("google", TOKEN);
+    let read = h.agent("toy_list", needs()).unwrap();
+    assert_eq!(
+        read,
+        json!({ "subject": "person@example.com", "scheme": "Bearer" })
+    );
+    h.sign_in_with(
+        json!({ "account": "google", "label": "work", "access_token": TOKEN,
+                           "subject": "work@example.com" }),
+    );
+    h.sign_out("google");
+    assert_eq!(
+        h.agent("toy_list", needs()).unwrap()["subject"],
+        "work@example.com"
+    );
+    h.sign_out_label("google", "work");
+    assert_eq!(
+        h.agent("toy_list", needs()).unwrap_err()["code"],
+        "account_required"
+    );
+}
+
+#[test]
 fn an_unknown_reserved_name_is_method_not_found() {
     let mut run = Run::new();
     run.provision();

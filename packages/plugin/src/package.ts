@@ -8,6 +8,11 @@
 // bin/<name> and bin/<plugin id>.manifest.json, where Served.fromEnv finds
 // the manifest without a setting. Other files the template lists
 // (buwiz.files: install path → {asset}) get their SHA-256 too.
+//
+// The signed manifest decides the block's protocol, id, short, version and
+// publisher, and plugin.json's version: a template need not carry them, and
+// its own values are replaced. The mini app's mcpServers entry must run
+// ${PLUGIN_ROOT}/bin/<name>.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -53,18 +58,12 @@ export function fill(template: Obj, out: string, id: string, name: string, platf
   const plugin = structuredClone(template);
   const block = plugin.buwiz as Obj | undefined;
   if (typeof block !== "object" || block === null || Array.isArray(block)) throw new Error("the template has no buwiz block");
-  if (block.protocol !== PROTOCOL) throw new Error(`buwiz.protocol must be ${PROTOCOL}`);
-  if (block.id !== id) throw new Error(`buwiz.id must be ${id}`);
-  const served = readJson(join(out, fileName(id)));
-  for (const key of ["id", "short", "version"]) {
-    if (!same(block[key], served[key])) throw new Error(`buwiz.${key} is ${shown(block[key])}; the signed manifest's is ${shown(served[key])}`);
-  }
-  if (!same((block.publisher as Obj | undefined)?.key_id, (served.publisher as Obj | undefined)?.key_id)) {
-    throw new Error("buwiz.publisher.key_id differs from the signed manifest's");
-  }
-  const version = block.version;
   const server = block.server;
   if (typeof server !== "string" || server === "") throw new Error("the template has no buwiz.server");
+  // the signed manifest is the one source of what both signatures name
+  const fromServed = fromManifest(readJson(join(out, fileName(id))), id);
+  const version = fromServed.version;
+  Object.assign(block, fromServed);
 
   const manifestName = fileName(id);
   const files: Obj = { [`bin/${manifestName}`]: { asset: manifestName, sha256: sha256File(join(out, manifestName)) } };
@@ -89,11 +88,52 @@ export function fill(template: Obj, out: string, id: string, name: string, platf
   block.binaries = Object.fromEntries(Object.entries(binaries).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   delete block.signature;
 
-  if (!same(plugin.version, version)) throw new Error("plugin.json's version must equal buwiz.version");
+  plugin.version = version;
   const servers = (plugin.mcpServers ??= {}) as Obj;
-  if (typeof servers !== "object" || Array.isArray(servers)) throw new Error("mcpServers is not an object");
-  servers[server] ??= { command: `\${PLUGIN_ROOT}/bin/${name}`, args: ["mcp"] };
+  if (typeof servers !== "object" || servers === null || Array.isArray(servers)) throw new Error("mcpServers is not an object");
+  const command = `\${PLUGIN_ROOT}/bin/${name}`;
+  servers[server] ??= { command, args: ["mcp"] };
+  checkServer(server, servers[server], command);
   return plugin;
+}
+
+/** The block fields the signed manifest decides: protocol, id, short,
+ *  version and publisher ({id, key_id}). A template's own values for them
+ *  are replaced. */
+function fromManifest(served: Obj, id: string): Obj {
+  if (served.protocol !== PROTOCOL) throw new Error(`the signed manifest's protocol is ${shown(served.protocol)}; this SDK packages ${PROTOCOL}`);
+  if (served.id !== id) throw new Error(`the signed manifest's id is ${shown(served.id)}; this binary serves ${id}`);
+  const text = (v: unknown, what: string): string => {
+    if (typeof v !== "string") throw new Error(`the signed manifest has no ${what}`);
+    return v;
+  };
+  const publisher = (served.publisher ?? {}) as Obj;
+  return {
+    protocol: PROTOCOL,
+    id,
+    short: text(served.short, "short"),
+    version: text(served.version, "version"),
+    publisher: { id: text(publisher.id, "publisher.id"), key_id: text(publisher.key_id, "publisher.key_id") },
+  };
+}
+
+/** The mini app's mcpServers entry (§7.2): a stdio server whose command is
+ *  the package's own binary, the path buwiz.binaries installs. */
+function checkServer(server: string, value: unknown, command: string): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`mcpServers.${server} is not an object`);
+  const entry = value as Obj;
+  if (entry.command !== command) throw new Error(`mcpServers.${server}.command must be ${command}, the binary the package installs`);
+  if ("url" in entry) throw new Error(`mcpServers.${server} is a stdio server: no url`);
+  for (const key of ["type", "transport"]) {
+    if (key in entry && entry[key] !== "stdio") throw new Error(`mcpServers.${server}.${key} must be stdio`);
+  }
+  if ("args" in entry && !(Array.isArray(entry.args) && entry.args.every((a) => typeof a === "string"))) {
+    throw new Error(`mcpServers.${server}.args must be strings`);
+  }
+  const env = entry.env;
+  if ("env" in entry && !(typeof env === "object" && env !== null && !Array.isArray(env) && Object.values(env).every((v) => typeof v === "string"))) {
+    throw new Error(`mcpServers.${server}.env must be an object of strings`);
+  }
 }
 
 /** `<name> package <template> <out> <platform> [--published <plugin.json>]`:

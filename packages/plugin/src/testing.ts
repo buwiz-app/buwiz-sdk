@@ -5,7 +5,12 @@
 //   const h = await Harness.start(new Hello());
 //   expect(await h.agent("hello_greet", {})).toEqual({ greeting: "Hello, world" });
 //   await expect(h.agent("hello_greet", { ticket: "tkt_…" })).rejects.toMatchObject({ code: "not_found" });
+//
+//   // as the host does after the person signs in, and after sign-out
+//   await h.signIn("google", "synthetic-token");
+//   await h.signOut("google");
 
+import { DEFAULT_LABEL } from "./accounts";
 import type { Json } from "./jcs";
 import { PluginKey, b64u } from "./key";
 import { PROTOCOL, Served, permissionsDigest } from "./manifest";
@@ -94,5 +99,29 @@ export class Harness<P extends Plugin> {
       null,
     );
     return openId;
+  }
+
+  /** Sign in to `account` as the host does after the person signs in:
+   *  buwiz.account.set with label default, provider google, subject
+   *  person@example.com, no scopes, Bearer and no expiry. Use a synthetic
+   *  token. */
+  signIn(account: string, accessToken: string): Promise<void> {
+    return this.signInWith({ account, access_token: accessToken });
+  }
+
+  /** buwiz.account.set with `push`'s fields over signIn's defaults, e.g.
+   *  another label, scopes or an expires_at. */
+  async signInWith(push: Record<string, Json>): Promise<void> {
+    const args = { label: DEFAULT_LABEL, provider: "google", subject: "person@example.com", scopes: [], token_type: "Bearer", ...push };
+    // the reply never carries the token, so it can be shown
+    const reply = (await this.call("buwiz.account.set", args, null)) as { ok?: boolean };
+    if (reply.ok !== true) throw new Error(`sign in: ${JSON.stringify(reply)}`);
+  }
+
+  /** Sign one sign-in of `account` out (buwiz.account.clear); the default
+   *  one unless `label` names another. */
+  async signOut(account: string, label: string = DEFAULT_LABEL): Promise<void> {
+    const reply = (await this.call("buwiz.account.clear", { account, label }, null)) as { ok?: boolean };
+    if (reply.ok !== true) throw new Error(`sign out: ${JSON.stringify(reply)}`);
   }
 }
