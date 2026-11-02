@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "The Buwiz Bot mini app SDK: the plugin half in TypeScript (packages/plugin) and the bridge types for TSX apps (packages/app)",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "repository": "github:buwiz-app/buwiz-sdk",
   "files": [
     "packages",

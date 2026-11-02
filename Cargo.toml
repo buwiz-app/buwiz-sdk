@@ -5,7 +5,7 @@ members = ["crates/plugin", "crates/app"]
 [workspace.package]
 edition = "2024"
 rust-version = "1.88"
-license = "UNLICENSED"
+license = "Apache-2.0"
 publish = false
 repository = "https://github.com/buwiz-app/buwiz-sdk"
 

@@ -147,3 +147,8 @@ Conformance runs the Bot's own `buwiz-plugin-test` against your built plugin; ea
 
 `tools/check-all.sh` runs every gate. The two halves change together: a change to one half's behavior is made in
 the other in the same commit, with the shared vectors or tests to prove it.
+
+## License
+
+The Buwiz SDK is free and open source under the [Apache License 2.0](LICENSE)
+(`NOTICE` holds the copyright line), as Buwiz Bot is.
