@@ -36,6 +36,7 @@ with it.
 
 - [Appendix A. Example manifest](#appendix-a-example-manifest)
 - [Appendix B. Example plugin.json](#appendix-b-example-pluginjson)
+- [Appendix C. Conformance checklist](#appendix-c-conformance-checklist)
 
 ---
 
@@ -1623,3 +1624,131 @@ The same plugin as a package with one Google account and one skill. Hashes and t
   }
 }
 ```
+
+## Appendix C. Conformance checklist
+
+Each ID names one testable requirement. A host conforms when it passes every ID marked host or both; a plugin
+conforms when it passes every ID marked plugin or both, for the features it uses. IDs are stable: a gap in the
+numbering is an ID not in use, and an ID is never reused for another requirement.
+
+### C.1 Manifest (MAN)
+
+| ID     | Side | Requirement                                                                                                                                              | Section        |
+| ------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| MAN-01 | both | The manifest's signature is ed25519 over JCS and verifies with a trust-store publisher key the plugin id is approved for.                                | 5.2, 6.2       |
+| MAN-02 | both | A byte changed in a signed manifest fails verification with `manifest_invalid`.                                                                          | 5.2, 6.2       |
+| MAN-03 | both | The manifest is an I-JSON object; any other JSON value is refused, not taken as `{}`.                                                                    | 6.2            |
+| MAN-04 | both | A 1.0 host accepts `protocol` `1.0.x` and refuses `1.1.0` and later, `2.0.x`, `2.1.x` and other majors with `protocol_unsupported`; `version` is semver. | 3.3, 6.2       |
+| MAN-05 | both | A non-empty `needs` is refused with `not_supported`; `[]` is accepted.                                                                                   | 6.2, 6.3       |
+| MAN-06 | both | An unknown key in `permissions` is refused; an unknown top-level key is ignored.                                                                         | 3.4, 12        |
+| MAN-07 | both | Every grammar of section 4 holds; each is tested with one valid and one invalid value.                                                                   | 4              |
+| MAN-08 | both | Every manifest limit holds; each is tested at the limit and one over.                                                                                    | 6.3 to 6.9, 24 |
+| MAN-09 | host | A `short` used by another enabled plugin is refused.                                                                                                     | 6.2            |
+| MAN-10 | both | Every tool in `tools/list` but the reserved ones starts with `<short>_`, and every tool the manifest names is in the list.                               | 6.2            |
+| MAN-11 | both | A command named like a built-in (`status`) is refused.                                                                                                   | 4, 6.5         |
+| MAN-12 | both | An unknown key in a `routines[]` entry, `needs` among them, is refused.                                                                                  | 3.4, 6.7       |
+| MAN-13 | both | `routines[].writes` names the plugin's own tools, each once, never a reserved or `readOnlyHint: true` tool, each in `tools/list`.                        | 6.2, 6.7       |
+| MAN-14 | both | `routines[].params` is a small JSON Schema whose properties follow its rules and are not keys of `query.args`.                                           | 19.2           |
+| MAN-21 | both | An app is a TSX app or a native screen, never both or neither; a native screen is refused under a key that is not first party.                           | 6.8, 11.3      |
+
+### C.2 Apps (APP)
+
+| ID     | Side | Requirement                                                                                                                           | Section    |
+| ------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| APP-01 | both | A TSX app's source is one text content whose fingerprint matches the manifest; a one-byte change refuses it (`fingerprint_mismatch`). | 11.2       |
+| APP-02 | both | A TSX app's default export mounts; a native screen names an `abi` the host runs.                                                      | 11.2, 11.3 |
+| APP-03 | both | An import other than `nsh`, `nsh/base` and `buwiz` fails with `unsupported_import`.                                                   | 11.2       |
+| APP-04 | both | An app has no `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `localStorage` or `sessionStorage`.                              | 11.2       |
+| APP-05 | host | Props are validated against `apps[].props`; props that fail do not open the app; a ticket fills a declared `props.ticket`.            | 11.5       |
+| APP-06 | host | Props over 8 KiB, deeper than 8 or with an array over 100 items are refused.                                                          | 11.5       |
+| APP-07 | host | A bridge method whose permission is not granted is absent (`undefined`), and its host call fails.                                     | 12         |
+| APP-08 | host | A compile error, a runtime error and a budget trip each show the message of section 11.4.                                             | 11.4       |
+
+### C.3 Bridge and signing (BRG)
+
+| ID     | Side | Requirement                                                                                                                                    | Section          |
+| ------ | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| BRG-01 | host | A call of a tool outside `permissions.tools` rejects `permission_denied` and sends nothing.                                                    | 13.2, 14.2       |
+| BRG-02 | host | A call of a tool the person switched off rejects `disabled`.                                                                                   | 14.2, 14.5       |
+| BRG-03 | both | A call signed by the open's session key with a fresh nonce reaches the plugin with `buwiz/caller` origin `app` and is answered.                | 14.1, 14.2, 16.1 |
+| BRG-04 | host | The same envelope sent twice: the second rejects `replayed`.                                                                                   | 14.2, 14.3       |
+| BRG-05 | host | An envelope 61 s old or ahead rejects `stale`; 59 s passes.                                                                                    | 14.2             |
+| BRG-06 | host | An envelope signed by another key, or changed after signing, rejects `bad_signature`.                                                          | 14.2             |
+| BRG-07 | host | A call without a registered session rejects `session_invalid`.                                                                                 | 14.2             |
+| BRG-08 | host | A call on an open from an earlier plugin generation rejects `plugin_restarted`.                                                                | 14.2             |
+| BRG-09 | host | An `isError: true` result rejects `tool_error` with the first text.                                                                            | 13.2             |
+| BRG-10 | host | A result over 1 MiB rejects `result_too_large`; one just under passes.                                                                         | 13.2             |
+| BRG-11 | host | A call past its time limit rejects `timeout` and the broker sends MCP cancellation.                                                            | 13.2, 22.2       |
+| BRG-12 | host | The 9th concurrent call of an open waits; the 21st new call in one second rejects `rate_limited`.                                              | 13.2             |
+| BRG-13 | host | `buwiz.open({url})` opens only `https:` URLs of a listed origin, and asks every time.                                                          | 13.5, 17         |
+| BRG-14 | host | `buwiz.pickFile` never returns a path; `read()` after the open closes rejects `closed`.                                                        | 13.5             |
+| BRG-15 | host | `buwiz.attach` without consent rejects `consent_declined` and leaves the chat unchanged.                                                       | 13.5, 17         |
+| BRG-16 | host | Storage holds its key, value, quota and key-count limits, and one app cannot read another's keys.                                              | 21               |
+| BRG-19 | host | `buwiz.actions`, `onAction`, `meta` and `settle` are present without permissions, hold their rules, and an inline card draws and settles them. | 12, 13.6         |
+
+### C.4 Reserved tools (RSV)
+
+| ID     | Side   | Requirement                                                                                                               | Section          |
+| ------ | ------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| RSV-01 | plugin | `buwiz.provision` is the first call answered and answers `{ok: true, manifest_sha256}`; every other tool fails before it. | 5.4, 10.2        |
+| RSV-02 | plugin | `buwiz.session.open` with an unknown app, a wrong `perms_sha256` or a `not_after` past 8 hours fails `invalid_args`.      | 10.3             |
+| RSV-03 | plugin | The session certificate is the request, signed by the plugin key over JCS; the seed never appears in stderr.              | 5.4, 5.5, 10.3   |
+| RSV-04 | plugin | `buwiz.ticket.resolve` returns a title and no subject field; an unknown ticket is `{valid: false}`.                       | 10.5             |
+| RSV-05 | plugin | `buwiz.session.close` and `buwiz.uninstall` answer `ok: true`; any other unknown `buwiz.*` name answers `-32601`.         | 10.1, 10.4, 10.6 |
+| RSV-06 | host   | Reserved tool names are absent from the model's tool list, and a model call of one is refused.                            | 10.1, 18.2       |
+
+### C.5 Invocation (INV)
+
+| ID     | Side | Requirement                                                                                                                                            | Section    |
+| ------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| INV-01 | host | A typed token parses with the typed grammar; its canonical form matches the canonical grammar and carries a ticket.                                    | 4, 15.1    |
+| INV-02 | host | A typed identifier resolves to a ticket; the stored message carries the ticket, not the identifier.                                                    | 15.1       |
+| INV-03 | host | `/name` is reachable unqualified when unique; an ambiguous name needs `/<short>:name`.                                                                 | 4.1        |
+| INV-04 | both | Resolve `choices` are capped at 20, `label` at 80 and `detail` at 160 characters; a chosen completion of a scope resolves to a token.                  | 15.2       |
+| INV-05 | both | A resolve `open` names an app of the same plugin; one naming another plugin's app is refused.                                                          | 15.2, 16.2 |
+| INV-06 | host | A link whose ticket resolves `valid: false` opens the app with "This item is no longer available".                                                     | 15.6       |
+| INV-07 | host | A link over 2048 characters, or with `props` over 1024 bytes, is refused.                                                                              | 15.6       |
+| INV-08 | host | A tool result's `buwiz/open` is a card with Open or Show and never opens by itself.                                                                    | 16.2, 17   |
+| INV-09 | host | A `buwiz/open` on an `isError` result is ignored.                                                                                                      | 16.2       |
+| INV-10 | both | A resolve `prompt` answers a command only, with non-blank text of at most 4000 characters (else `plugin_invalid`), and reaches the composer unchanged. | 15.2       |
+
+### C.6 Agent and text (AGT)
+
+| ID     | Side | Requirement                                                                                                           | Section    |
+| ------ | ---- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
+| AGT-01 | host | Plugin tools reach the model as `<short>_<tool>`, unchanged, with the description prefixed `[<short>] `.              | 18.1       |
+| AGT-02 | host | A tool the person switched off is absent from the model's list, and a model call of it is refused.                    | 14.5, 18.2 |
+| AGT-03 | host | A plugin not approved for its key contributes no text to the model.                                                   | 5.1, 18.3  |
+| AGT-04 | host | Plugin text over its cap (a scope hint 1500, server instructions 4000) is cut at a word with the marker and labelled. | 18.3       |
+| AGT-05 | host | Heading markers at the start of a line of plugin text are removed.                                                    | 18.3       |
+| AGT-06 | host | Attachments store canonical tokens; after a plugin major change they show "needs update" and are not sent.            | 15.5       |
+| AGT-08 | host | A routine's turn sees only its own plugin's tools and its `reads` tools: no built-ins or other servers.               | 18.2, 19.1 |
+| AGT-09 | host | The agent can list, create, update, run and delete routine instances; a routine's own turn gets none of these tools.  | 19.3       |
+
+### C.7 Lifecycle (LCY)
+
+| ID     | Side | Requirement                                                                                                                            | Section        |
+| ------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| LCY-01 | both | The plugin passes the install gate; the install review shows every line of section 6.10, and Cancel changes nothing.                   | 6.10, 9.1, 9.3 |
+| LCY-02 | host | An update that adds a permission needs consent; one that removes a permission does not.                                                | 9.4            |
+| LCY-03 | host | A downgrade is refused with `invalid_args` unless the person chose "Install older version".                                            | 9.4            |
+| LCY-05 | host | Disable stops the process and removes its tools and commands; storage and keys stay.                                                   | 9.5            |
+| LCY-06 | host | Uninstall removes the key, the record, opens, pins, attachments and storage; a later link shows "not installed".                       | 9.6            |
+| LCY-07 | host | A crashed plugin restarts with backoff and its calls in flight fail `plugin_restarted`; after 6 restarts in 10 minutes it is `failed`. | 22.3           |
+| LCY-08 | host | A restart provisions and verifies again; a changed manifest under the same version fails `manifest_changed`.                           | 6.2, 9.1, 22.3 |
+| LCY-09 | host | The install review lists each routine's `writes`; an update that adds one needs consent, one that removes one does not.                | 6.10, 9.4      |
+
+### C.8 Consent (CON)
+
+| ID     | Side | Requirement                                                                                                | Section |
+| ------ | ---- | ---------------------------------------------------------------------------------------------------------- | ------- |
+| CON-01 | host | Each row of the consent table has a test: consent is asked exactly where the table says, and nowhere else. | 17      |
+
+### C.9 Host extensions
+
+These IDs test host behaviour this specification does not require. A host MAY pass them; a plugin MUST NOT
+depend on them.
+
+| ID     | Side | Requirement                                                                                                          | Nearest section |
+| ------ | ---- | -------------------------------------------------------------------------------------------------------------------- | --------------- |
+| LCY-04 | host | A new fingerprint takes effect at the next open; an open already running keeps its code until the person reloads it. | 11.2            |
