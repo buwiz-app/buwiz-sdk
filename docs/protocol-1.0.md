@@ -151,7 +151,7 @@ ones.
 | Publisher id    | `^[a-z][a-z0-9-]{1,62}(\.[a-z0-9-]{1,62})*$`                                               | Buwiz's own is `app.buwiz`.                                                                                                                         |
 | Key id          | `^[a-z0-9][a-z0-9-]{0,63}$`                                                                | Selects a trust-store key, for example `gc-2026-01`.                                                                                                |
 | App id          | `^[a-z][a-z0-9-]{0,47}$`                                                                   | Unique within the plugin.                                                                                                                           |
-| Command name    | `^[a-z][a-z0-9-]{0,31}$`                                                                   | Unique within the plugin. Not a built-in command (`status`).                                                                                        |
+| Command name    | `^[a-z][a-z0-9-]{0,31}$`                                                                   | Unique within the plugin. Not a built-in command (`status`, `messages`).                                                                            |
 | Scope name      | `^[a-z][a-z0-9-]{0,31}$`                                                                   | Unique within the plugin.                                                                                                                           |
 | Routine id      | `^[a-z][a-z0-9-]{0,47}$`                                                                   | Unique within the plugin.                                                                                                                           |
 | Tool name       | `^[a-z][a-z0-9_]{0,62}$`                                                                   | Starts with `<short>_`, for example `notes_list`.                                                                                                   |
@@ -173,7 +173,7 @@ Resource URIs: the manifest is `buwiz://manifest`; a TSX app's source is `buwiz-
 
 ### 4.1 Slash namespacing
 
-1. Built-in commands (`/status`) always win for the unqualified name.
+1. Built-in commands (`/status`, `/messages`) always win for the unqualified name.
 2. A plugin command `/name` is reachable unqualified when exactly one enabled plugin declares `name` and no
    built-in has it.
 3. Otherwise it is reachable only as `/<short>:name`. The composer lists every candidate.
@@ -344,7 +344,7 @@ Character counts are Unicode code points unless a rule says bytes.
 
 | Field         | Req | Rule                                                                      |
 | ------------- | --- | ------------------------------------------------------------------------- |
-| `name`        | yes | Command grammar; not `status`; unique.                                    |
+| `name`        | yes | Command grammar; not `status` or `messages`; unique.                      |
 | `description` | yes | At most 200 characters (may be empty). Shown in the command popup.        |
 | `args`        | no  | Hint text such as `[ticket]`, at most 120 characters.                     |
 | `resolve`     | yes | One of the plugin's tools (`<short>_…`): the resolve tool (section 15.2). |
@@ -1645,7 +1645,7 @@ numbering is an ID not in use, and an ID is never reused for another requirement
 | MAN-08 | both | Every manifest limit holds; each is tested at the limit and one over.                                                                                    | 6.3 to 6.9, 24 |
 | MAN-09 | host | A `short` used by another enabled plugin is refused.                                                                                                     | 6.2            |
 | MAN-10 | both | Every tool in `tools/list` but the reserved ones starts with `<short>_`, and every tool the manifest names is in the list.                               | 6.2            |
-| MAN-11 | both | A command named like a built-in (`status`) is refused.                                                                                                   | 4, 6.5         |
+| MAN-11 | both | A command named like a built-in (`status`, `messages`) is refused.                                                                                       | 4, 6.5         |
 | MAN-12 | both | An unknown key in a `routines[]` entry, `needs` among them, is refused.                                                                                  | 3.4, 6.7       |
 | MAN-13 | both | `routines[].writes` names the plugin's own tools, each once, never a reserved or `readOnlyHint: true` tool, each in `tools/list`.                        | 6.2, 6.7       |
 | MAN-14 | both | `routines[].params` is a small JSON Schema whose properties follow its rules and are not keys of `query.args`.                                           | 19.2           |
