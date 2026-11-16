@@ -177,6 +177,43 @@ test("the pacer keeps sequential calls inside a host that counts each call when 
   expect(refused).toBe(0);
 });
 
+test("a caller waiting on running calls wakes when one settles, and a place frees one window later", async () => {
+  const window = 100;
+  const pace = pacer(2, window);
+  const release: (() => void)[] = [];
+  const hold = () => new Promise<void>((r) => release.push(r));
+  const first = pace(hold);
+  const second = pace(hold);
+  let started = 0;
+  const third = pace(async () => {
+    started = Date.now();
+  });
+  // both places are running: the third caller has no time to wait for, only a settle
+  await new Promise((r) => setTimeout(r, 150));
+  expect(started).toBe(0);
+  const settled = Date.now();
+  release[0]!();
+  await first;
+  await third;
+  expect(started - settled).toBeGreaterThanOrEqual(window);
+  expect(started - settled).toBeLessThan(window + 150);
+  release[1]!();
+  await second;
+});
+
+test(
+  "the real host refuses no call of a plugin with more tools than fit in one second",
+  async () => {
+    const key = (await keygen(tempDir())).path;
+    const json = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_TOOLS=50"), "--json"]);
+    const rows = (JSON.parse(json.out) as { rows: Row[] }).rows;
+    expect(rows.filter((r) => r.status === "fail")).toEqual([]);
+    // one signed call per permitted tool: probe_list and the fifty more
+    expect(rows.filter((r) => r.id === "BRG-03" && r.status === "pass").length).toBeGreaterThanOrEqual(51);
+  },
+  MINUTE,
+);
+
 test(
   "the runner fails a blank prompt with the check INV-10",
   async () => {

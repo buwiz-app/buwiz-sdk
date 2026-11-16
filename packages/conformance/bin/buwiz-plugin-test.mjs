@@ -47,7 +47,7 @@ import { isObject, isString, parseIJson, signedBytes } from "../src/v1/jcs.mjs";
 import { fileKeystore } from "../src/v1/keystore.mjs";
 import { HOST_PROTOCOL, MANIFEST_URI, NATIVE_ABIS, NATIVE_SCREEN, checkTools, manifestHash, permsDigest, verifyManifest } from "../src/v1/manifest.mjs";
 import { createPlugins, resultData } from "../src/v1/plugins.mjs";
-import { MAX_PER_SECOND, PROMPT_MAX, checkOpen, checkPrompt, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
+import { MAX_PER_SECOND, PROMPT_MAX, RATE_WINDOW_MS, checkOpen, checkPrompt, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
 import { fingerprintOf, signManifest } from "../src/v1/sign-manifest.mjs";
 import { TRUST_FILE, isApproved, loadTrust } from "../src/v1/trust.mjs";
 import { newTicket } from "../lib/buwiz-plugin.mjs";
@@ -578,35 +578,45 @@ export async function runPluginTest(o) {
  *  moment it starts until `windowMs` after it settles. The host counts a call
  *  when it arrives, which is between those two moments, so the host's window
  *  for a call has always ended when its place here is free. Callers running
- *  in parallel are counted too. */
-export function pacer(max, windowMs) {
-  // one entry per call: null while it runs, then the time it settled
+ *  in parallel are counted too. A call that never settles keeps its place, so
+ *  give every call its own time limit. `now` is the clock, the host's when it
+ *  has one of its own. */
+export function pacer(max, windowMs, now = Date.now) {
+  // one entry per held place: `at` is when it frees, Infinity while its call runs
   let held = [];
+  // callers waiting for a running call to settle
+  let waiting = [];
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   return async (fn) => {
     for (;;) {
-      const now = Date.now();
+      const t = now();
 
-      held = held.filter((h) => h.settled === null || now - h.settled < windowMs);
+      held = held.filter((place) => place.at > t);
 
       if (held.length < max) break;
 
-      const settled = held.filter((h) => h.settled !== null).map((h) => h.settled);
+      const next = Math.min(...held.map((place) => place.at));
 
-      // with every place still running there is no time to wait for yet
-      await sleep(settled.length ? windowMs - (now - Math.min(...settled)) + 1 : 5);
+      // every place still running: wait for one to settle, not for a time
+      if (next === Infinity) await new Promise((r) => waiting.push(r));
+      else await sleep(next - t + 1);
     }
 
-    const place = { settled: null };
+    const place = { at: Infinity };
 
     held.push(place);
 
     try {
       return await fn();
     } finally {
-      place.settled = Date.now();
+      place.at = now() + windowMs;
+
+      const woken = waiting;
+
+      waiting = [];
+      for (const wake of woken) wake();
     }
   };
 }
@@ -784,7 +794,7 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 
     if (!open) continue;
     let first = null;
-    const pace = pacer(MAX_PER_SECOND, 1000);
+    const pace = pacer(MAX_PER_SECOND, RATE_WINDOW_MS);
 
     for (const tool of a.permissions.tools)
       await run("BRG-03", `${a.id}: a signed call of ${tool} reaches the plugin and is answered`, async () => {

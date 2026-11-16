@@ -23,6 +23,8 @@ export const NONCE_MAX = 10_000;
 export const CERT_MAX_MS = 8 * 3600_000;
 export const MAX_INFLIGHT = 8;
 export const MAX_PER_SECOND = 20;
+// the window MAX_PER_SECOND is counted over
+export const RATE_WINDOW_MS = 1000;
 export const ARGS_MAX = 256 * 1024;
 export const RESULT_MAX = 1024 * 1024;
 // a buwiz.preview call's result (the document); permissions.preview.max_bytes may lower it
@@ -356,7 +358,7 @@ export function createSessions(plugins) {
   function rate(s) {
     const now = clock.now();
 
-    while (s.recent.length && now - s.recent[0] >= 1000) s.recent.shift();
+    while (s.recent.length && now - s.recent[0] >= RATE_WINDOW_MS) s.recent.shift();
 
     if (s.recent.length >= MAX_PER_SECOND) refuse("rate_limited", `more than ${MAX_PER_SECOND} calls in a second`);
     s.recent.push(now);
