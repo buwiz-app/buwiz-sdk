@@ -79,7 +79,7 @@ only logged too.
 
 The plugin test runner checks a manifest with native screens when you run
 it with `--first-party`
-([`testing.md`](https://github.com/buwiz-bot/buwiz-bot/blob/main/server/sdk/mini-app/docs/testing.md)).
+([`testing.md`](../../docs/testing.md)).
 
 ## The API
 
