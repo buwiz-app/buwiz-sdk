@@ -75,6 +75,8 @@ pub enum Origin {
     Routine,
     /// A command's or scope's resolve.
     Resolve,
+    /// A generated widget, on a tool offered to widgets (spec 16.4).
+    Widget,
     /// No caller: the broker sent none.
     Unknown,
 }
@@ -128,6 +130,8 @@ pub struct Caller {
     pub open_id: Option<String>,
     /// The routine whose turn or query this is.
     pub routine: Option<String>,
+    /// The widget's name (`R37`), for [`Origin::Widget`].
+    pub widget: Option<String>,
     /// The record of the AI's press, when the AI made the call (spec 16.5).
     /// An `Origin::App` call that has one is a read the AI made, not the
     /// person's act.
@@ -155,6 +159,7 @@ impl Caller {
             Some("agent") => Origin::Agent,
             Some("routine") => Origin::Routine,
             Some("resolve") => Origin::Resolve,
+            Some("widget") => Origin::Widget,
             _ => Origin::Unknown,
         };
         Self {
@@ -162,6 +167,7 @@ impl Caller {
             app: text("app"),
             open_id: text("open_id"),
             routine: text("routine"),
+            widget: text("widget"),
             press: caller.and_then(|c| c.get("press")).and_then(Press::of),
             accounts: Accounts::default(),
         }

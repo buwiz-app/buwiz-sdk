@@ -97,7 +97,7 @@ class Toy implements Plugin {
       if (p?.by === "ai_approved") {
         press = { by: "ai_approved", who: p.who, approved_by: p.approvedBy, once: p.once, args_hash: p.argsHash, shown_hash: p.shownHash, at: p.at };
       }
-      return ok({ origin: caller.origin, press });
+      return ok({ origin: caller.origin, widget: caller.widget ?? null, press });
     }
     if (typeof args.needs === "string") {
       // a tool that reads with a pushed token answers its subject, never the token
@@ -382,10 +382,10 @@ test("a press record reaches the tool, and a malformed one is dropped", async ()
   const whoami = async (caller: unknown) => result(await run.call("toy_list", { whoami: true }, caller));
   const caller: Record<string, unknown> = appCaller("board", 1);
   // the person's own call has no press
-  expect(await whoami(caller)).toEqual({ origin: "app", press: null });
+  expect(await whoami(caller)).toEqual({ origin: "app", widget: null, press: null });
   // a read the AI made: origin app, with its record
   caller.press = { by: "ai", who: "agent.example" };
-  expect(await whoami(caller)).toEqual({ origin: "app", press: { by: "ai", who: "agent.example" } });
+  expect(await whoami(caller)).toEqual({ origin: "app", widget: null, press: { by: "ai", who: "agent.example" } });
   // a write the AI made after the person's yes
   const approved = {
     by: "ai_approved",
@@ -398,10 +398,25 @@ test("a press record reaches the tool, and a malformed one is dropped", async ()
   };
   caller.origin = "agent";
   caller.press = approved;
-  expect(await whoami(caller)).toEqual({ origin: "agent", press: approved });
+  expect(await whoami(caller)).toEqual({ origin: "agent", widget: null, press: approved });
   // anything else is no record
   for (const bad of ["ai", { by: "person", who: "person.example" }, { by: "ai" }, { by: "ai_approved", who: "agent.example" }]) {
     caller.press = bad;
     expect((await whoami(caller)).press).toBeNull();
   }
+});
+
+test("a widget call carries its origin and name, and an unknown origin is unknown", async () => {
+  const run = new Run();
+  await run.provision();
+  const widget = { origin: "widget", plugin: "app.buwiz.toy", widget: "R37", ts: 1 };
+  const who = result(await run.call("toy_list", { whoami: true }, widget));
+  expect(who.origin).toBe("widget");
+  expect(who.widget).toBe("R37");
+  // a widget the person allowed to write reaches a write tool
+  expect(result(await run.call("toy_add", {}, widget)).added).toBe(true);
+  // an origin this library does not know is not a crash
+  const other = result(await run.call("toy_list", { whoami: true }, { origin: "somebody", plugin: "app.buwiz.toy", ts: 1 }));
+  expect(other.origin).toBe("unknown");
+  expect(other.widget).toBeNull();
 });

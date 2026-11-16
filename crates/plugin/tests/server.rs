@@ -96,7 +96,7 @@ impl Plugin for Toy {
                 }),
             };
             return ok(
-                json!({ "origin": format!("{:?}", caller.origin).to_lowercase(), "press": press }),
+                json!({ "origin": format!("{:?}", caller.origin).to_lowercase(), "widget": caller.widget, "press": press }),
             );
         }
         if let Some(account) = args.get("needs").and_then(Value::as_str) {
@@ -570,4 +570,22 @@ fn a_press_record_reaches_the_tool_and_a_malformed_one_is_dropped() {
         caller["press"] = bad;
         assert_eq!(whoami(&mut run, caller.clone())["press"], json!(null));
     }
+}
+
+#[test]
+fn a_widget_call_carries_its_origin_and_name_and_an_unknown_origin_is_unknown() {
+    let mut run = Run::new();
+    run.provision();
+    let widget = json!({ "origin": "widget", "plugin": Toy::ID, "widget": "R37", "ts": 1 });
+    let who = run.call("toy_list", json!({ "whoami": true }), widget.clone());
+    assert_eq!(result(&who)["origin"], "widget");
+    assert_eq!(result(&who)["widget"], "R37");
+    // a widget the person allowed to write reaches a write tool
+    let added = run.call("toy_add", json!({}), widget);
+    assert_eq!(result(&added)["added"], true);
+    // an origin this library does not know is not a crash
+    let other = json!({ "origin": "somebody", "plugin": Toy::ID, "ts": 1 });
+    let who = run.call("toy_list", json!({ "whoami": true }), other);
+    assert_eq!(result(&who)["origin"], "unknown");
+    assert_eq!(result(&who)["widget"], json!(null));
 }

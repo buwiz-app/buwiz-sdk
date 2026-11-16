@@ -178,7 +178,9 @@ buwiz.meta({ text: "Due in 3 days", pill: true });
 A bridge call reaches your tool as `tools/call` with the arguments as sent and
 `_meta["buwiz/caller"]` = `{origin, plugin, app, open_id, ts}`, and `press` when the AI made the call (spec 16.1, 16.5).
 `origin` is `app` for bridge calls, `agent` for the model, `routine` for a
-routine's query and `resolve` for resolve tools. A bridge call made while the
+routine's query, `resolve` for resolve tools and `widget` for a generated widget
+(`{origin, plugin, widget, ts}`; a tool is offered to widgets by naming `widget` in
+`_meta["buwiz/audience"]`, spec 16.4). A bridge call made while the
 agent, not the person, is driving your screen comes as `agent` too, unless the
 tool has `readOnlyHint: true`: your screen's own reads keep working as `app`, and a
 tool you keep for apps refuses its writes. A write reaches your tool only if the

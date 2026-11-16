@@ -1088,6 +1088,7 @@ Every `tools/call` to a plugin tool carries `_meta["buwiz/caller"]`:
 | `"agent"`   | The model; a bridge write the AI made    | `plugin`, `ts`; in a routine's turn calling the routine's own plugin also `routine`, and `instance` and `params` (section 19); a bridge write also `app`, `open_id` and `press` |
 | `"routine"` | A routine's query                        | `plugin`, `ts`, `routine`, `instance`, `params`                                                                                                                                 |
 | `"resolve"` | A resolve tool                           | `plugin`, `ts`                                                                                                                                                                  |
+| `"widget"`  | A generated widget (section 16.4)        | `plugin`, `widget`, `ts`                                                                                                                                                        |
 
 `ts` is unix ms. The plugin uses it to authorize (section 23.2). The host never shows it to the model.
 
@@ -1136,17 +1137,38 @@ and `prompt` (trimmed), cut to 40 and 200 characters, and shows them as chips un
 
 ### 16.4 `buwiz/audience` (plugin, in `tools/list`)
 
-A tool definition's `_meta["buwiz/audience"]` is an array of audience words. `"agent"` is the one word this section
-defines for the model and the AI's press; other words (for example `"app"`) mean nothing to the host and are
-ignored. The host reads the array in two places:
+A tool definition's `_meta["buwiz/audience"]` is an array of audience words. `"agent"` and `"widget"` are the words
+this section defines; other words (for example `"app"`) mean nothing to the host and are ignored. The host reads
+the array in three places:
 
 - The model's surface (section 18.2). An array that leaves out `"agent"` (for example `["app"]`) keeps the tool off the
   surface, and model calls of it are refused. An absent audience, or one that is not an array, leaves the tool on the
   surface.
 - An AI's press through an app's screen (section 16.5). A write is open to agents only when the array contains
   `"agent"`. An absent audience is not open.
+- Generated widgets (below). A tool is offered to widgets only when the array contains `"widget"`. An absent audience
+  is not offered.
 
-A tool that wants the AI's press and the model to reach it lists `"agent"` explicitly.
+A tool that wants the model, or the AI's press, or widgets, lists that word explicitly. An app's own calls (the
+person's) do not depend on the audience.
+
+**Widgets.** A generated widget is a small program the Bot's model writes into a chat. It reads and changes data
+through sources; a plugin offers tools to widgets by marking them `"widget"`:
+
+- The source is named by the manifest's `short`, and a widget's action is the tool's name without `<short>_`. A tool
+  whose name does not start with `<short>_`, a reserved tool and a tool the person switched off are not offered. The
+  plugin MUST be enabled, approved and running, and its `short` MUST NOT be the name of a source the host has built in.
+- The person answers a permission card for each widget and source: read, read and write, or no. A tool counts as a
+  write unless its `annotations.readOnlyHint` is `true`; an answer of read refuses writes. An answer covers the
+  actions the source had when it was asked, so an action added later asks again. Nothing reaches the plugin before
+  the person answers.
+- The call reaches the tool with `_meta["buwiz/caller"]` `{origin: "widget", plugin, widget, ts}`. `widget` is the
+  widget's name, `R` and digits (for example `R37`). The call has no `app`, `open_id` or `press`.
+- The arguments are an object of at most 256 KiB. The call has the 120 s limit of section 22.2. A result over 1 MiB
+  and an `isError` result are errors to the widget. Otherwise the widget receives the result's `structuredContent`, or
+  when it has none the first text block.
+- A read-only tool whose audience holds both `"widget"` and `"agent"` can be read by the model through a source; that call arrives
+  as `origin: "agent"`, without `app` or `open_id`. A tool offered only to widgets is not.
 
 ### 16.5 `buwiz/press` (plugin, in `tools/list`)
 
@@ -1221,21 +1243,22 @@ The host strips `_meta` from every tool result before the model or an app sees i
 
 ## 17. Consent
 
-| Trigger                                                                                          | Consent                                                                                            |
-| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| A `buwiz://app/…` link from the OS or a web page                                                 | A dialog every time: "Open <app title> from <source>?"                                             |
-| A tool result's `buwiz/open`, full placement                                                     | A card with Open; nothing opens until pressed.                                                     |
-| A tool result's `buwiz/open`, inline placement                                                   | A card with Show; nothing mounts until pressed. A first-party plugin's answer card mounts at once. |
-| A resolve `open` from the agent or a routine                                                     | As a tool result.                                                                                  |
-| A click on an attachment or a pin                                                                | None.                                                                                              |
-| A command or token the person typed, resolving to `open`                                         | None.                                                                                              |
-| A command resolving to `prompt`                                                                  | None: nothing is sent.                                                                             |
-| `buwiz.open({app})`                                                                              | None.                                                                                              |
-| `buwiz.open({url})`, or an `https` URL in a resolve or tool result                               | A dialog every time: "Open <URL> in your browser?"                                                 |
-| Any other scheme in plugin output (`http`, `mailto`, `tel`, `file`, `buwiz://` other than `app`) | Refused; never opened.                                                                             |
-| `buwiz.attach`                                                                                   | A dialog: "Attach <title> to this chat?"                                                           |
-| `buwiz.pickFile`                                                                                 | The native file dialog is the consent.                                                             |
-| The AI's press of a tool that opted in with `buwiz/press`                                        | A card with Not now and Allow for that one call; nothing is sent until the person presses Allow.   |
+| Trigger                                                                                          | Consent                                                                                               |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| A `buwiz://app/…` link from the OS or a web page                                                 | A dialog every time: "Open <app title> from <source>?"                                                |
+| A tool result's `buwiz/open`, full placement                                                     | A card with Open; nothing opens until pressed.                                                        |
+| A tool result's `buwiz/open`, inline placement                                                   | A card with Show; nothing mounts until pressed. A first-party plugin's answer card mounts at once.    |
+| A resolve `open` from the agent or a routine                                                     | As a tool result.                                                                                     |
+| A click on an attachment or a pin                                                                | None.                                                                                                 |
+| A command or token the person typed, resolving to `open`                                         | None.                                                                                                 |
+| A command resolving to `prompt`                                                                  | None: nothing is sent.                                                                                |
+| `buwiz.open({app})`                                                                              | None.                                                                                                 |
+| `buwiz.open({url})`, or an `https` URL in a resolve or tool result                               | A dialog every time: "Open <URL> in your browser?"                                                    |
+| Any other scheme in plugin output (`http`, `mailto`, `tel`, `file`, `buwiz://` other than `app`) | Refused; never opened.                                                                                |
+| `buwiz.attach`                                                                                   | A dialog: "Attach <title> to this chat?"                                                              |
+| `buwiz.pickFile`                                                                                 | The native file dialog is the consent.                                                                |
+| A generated widget's first use of a source's tools                                               | A card per widget and source with read and write as separate answers; nothing is sent until answered. |
+| The AI's press of a tool that opted in with `buwiz/press`                                        | A card with Not now and Allow for that one call; nothing is sent until the person presses Allow.      |
 
 Declining changes nothing: no chat, attachment, pin or open is made before the person agrees.
 
@@ -1508,6 +1531,7 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 | H13 | A preview document is static and never handed to the app.                                       | 13.5       |
 | H14 | Account tokens reach only the plugin, never the model, chat, logs or apps.                      | 20         |
 | H15 | A write the AI makes through an app reaches a tool only as section 16.5 says.                   | 14.2, 16.5 |
+| H16 | A generated widget calls only tools offered to widgets, and only what the person allowed.       | 16.4, 17   |
 
 ### 23.2 What the plugin MUST do
 
@@ -1563,6 +1587,7 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 | `buwiz.actions`                                     | 3; id 64 characters `[A-Za-z0-9_.:-]`; label 24 characters; one primary                   |
 | `buwiz.meta` / `buwiz.settle`                       | 32 / 120 characters, one line                                                             |
 | `buwiz.call` args / result                          | 256 KiB / 1 MiB                                                                           |
+| A widget's call args / result                       | 256 KiB / 1 MiB                                                                           |
 | `buwiz.preview` document / title                    | `max_bytes` (at most 8 MiB) / 120 characters                                              |
 | `buwiz.copy` text                                   | 1 MiB                                                                                     |
 | `buwiz.open` URL                                    | 2048 characters                                                                           |

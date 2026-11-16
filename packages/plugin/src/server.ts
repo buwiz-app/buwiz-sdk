@@ -80,7 +80,7 @@ export interface Tool {
 }
 
 /** Who asked: _meta["buwiz/caller"]. "unknown": the broker sent none. */
-export type Origin = "app" | "agent" | "routine" | "resolve" | "unknown";
+export type Origin = "app" | "agent" | "routine" | "resolve" | "widget" | "unknown";
 
 /** The record of an AI's press: _meta["buwiz/caller"].press (spec 16.5). Only
  *  the host sets it, on a call the person did not make. */
@@ -108,6 +108,8 @@ export interface Caller {
   openId?: string;
   /** The routine whose turn or query this is. */
   routine?: string;
+  /** The widget's name (R37), for "widget" (spec 16.4). */
+  widget?: string;
   /** The record of the AI's press, when the AI made the call (spec 16.5). An
    *  "app" call that has one is a read the AI made, not the person's act. */
   press?: Press;
@@ -135,8 +137,16 @@ export function callerOf(params: Record<string, unknown>, accounts: Accounts = n
   const c = (params._meta as Record<string, unknown> | undefined)?.["buwiz/caller"] as Record<string, unknown> | undefined;
   const text = (key: string) => (typeof c?.[key] === "string" ? (c[key] as string) : undefined);
   const o = text("origin");
-  const origin: Origin = o === "app" || o === "agent" || o === "routine" || o === "resolve" ? o : "unknown";
-  return { origin, app: text("app"), openId: text("open_id"), routine: text("routine"), press: pressOf(c?.press), account: (id: string) => accounts.get(id) };
+  const origin: Origin = o === "app" || o === "agent" || o === "routine" || o === "resolve" || o === "widget" ? o : "unknown";
+  return {
+    origin,
+    app: text("app"),
+    openId: text("open_id"),
+    routine: text("routine"),
+    widget: text("widget"),
+    press: pressOf(c?.press),
+    account: (id: string) => accounts.get(id),
+  };
 }
 
 /** A mini app's own half: its manifest, app sources and tools. Server does
