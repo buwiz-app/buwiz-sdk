@@ -25,7 +25,12 @@ import { readFileSync } from "node:fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
-  CallToolRequestSchema, ErrorCode, ListResourcesRequestSchema, ListToolsRequestSchema, McpError, ReadResourceRequestSchema,
+  CallToolRequestSchema,
+  ErrorCode,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  McpError,
+  ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { isV1 } from "../src/grammar.mjs";
 import { fromB64u, pubOf, sign } from "../src/v1/ed.mjs";
@@ -125,7 +130,16 @@ export async function startPlugin(opts) {
 
     if (!Number.isSafeInteger(args.not_after) || args.not_after > Date.now() + EIGHT_HOURS) return fail("invalid_args", "not_after must be within 8 h");
 
-    const cert = { v: 1, typ: "buwiz-session", plugin: m.id, app: app.id, open_id: args.open_id, ks_pub: args.ks_pub, perms_sha256: args.perms_sha256, not_after: args.not_after };
+    const cert = {
+      v: 1,
+      typ: "buwiz-session",
+      plugin: m.id,
+      app: app.id,
+      open_id: args.open_id,
+      ks_pub: args.ks_pub,
+      perms_sha256: args.perms_sha256,
+      not_after: args.not_after,
+    };
 
     sessions.set(args.open_id, app.id);
 

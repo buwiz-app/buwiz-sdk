@@ -65,7 +65,8 @@ export const LIMITS = Object.freeze({
   writes: 8,
 });
 
-const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 const FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
 export const NATIVE_SCREEN = /^[a-z0-9._-]{1,64}$/;
 /** The native screen ABIs this host runs (`apps[].native.abi`). */
@@ -150,7 +151,8 @@ function obj(v, path) {
 
 // Objects that carry an access grant refuse unknown keys (3.4: fail closed).
 function onlyKeys(o, allowed, path) {
-  for (const k of Object.keys(o)) if (!allowed.includes(k)) throw invalid(`${path}.${k}`, "is not a known key here (refused: unknown keys in access grants fail closed)");
+  for (const k of Object.keys(o))
+    if (!allowed.includes(k)) throw invalid(`${path}.${k}`, "is not a known key here (refused: unknown keys in access grants fail closed)");
 }
 
 function int(v, path, lo, hi) {
@@ -299,7 +301,8 @@ function routines(m) {
       onlyKeys(x, ["plugin", "tools"], `${at}.reads[${j}]`);
       name(x.plugin, "pluginId", `${at}.reads[${j}].plugin`);
 
-      for (const [k, t] of list(x.tools, `${at}.reads[${j}].tools`, LIMITS.readsTools, { required: true }).entries()) name(t, "tool", `${at}.reads[${j}].tools[${k}]`);
+      for (const [k, t] of list(x.tools, `${at}.reads[${j}].tools`, LIMITS.readsTools, { required: true }).entries())
+        name(t, "tool", `${at}.reads[${j}].tools[${k}]`);
       tools += x.tools.length;
     }
 
@@ -395,11 +398,13 @@ function apps(m) {
     // a screen is TSX (entry, mime, sdk, fingerprint) or native (a host
     // screen of a first-party plugin, verifyManifest), never both
     if (a.native !== undefined) {
-      if (["entry", "mime", "sdk", "fingerprint"].some((k) => a[k] !== undefined)) throw invalid(at, "is a TSX screen (entry) or a native screen (native), not both");
+      if (["entry", "mime", "sdk", "fingerprint"].some((k) => a[k] !== undefined))
+        throw invalid(at, "is a TSX screen (entry) or a native screen (native), not both");
       obj(a.native, `${at}.native`);
       onlyKeys(a.native, ["screen", "abi"], `${at}.native`);
 
-      if (!isString(a.native.screen) || !NATIVE_SCREEN.test(a.native.screen)) throw invalid(`${at}.native.screen`, "must be 1 to 64 characters of a-z, 0-9, '.', '_' and '-'");
+      if (!isString(a.native.screen) || !NATIVE_SCREEN.test(a.native.screen))
+        throw invalid(`${at}.native.screen`, "must be 1 to 64 characters of a-z, 0-9, '.', '_' and '-'");
 
       if (!NATIVE_ABIS.includes(a.native.abi)) throw invalid(`${at}.native.abi`, `must be ${NATIVE_ABIS.join(" or ")}`);
     } else {
@@ -473,11 +478,13 @@ function protocolOf(m, host) {
   const [maj, min] = m.protocol.split(".").map(Number);
   const [hmaj, hmin] = host.split(".").map(Number);
 
-  if (maj !== hmaj)
-    throw new V1Error("protocol_unsupported", `the plugin implements protocol ${m.protocol}; this Buwiz Bot supports ${hmaj}.${hmin}`);
+  if (maj !== hmaj) throw new V1Error("protocol_unsupported", `the plugin implements protocol ${m.protocol}; this Buwiz Bot supports ${hmaj}.${hmin}`);
 
   if (min > hmin)
-    throw new V1Error("protocol_unsupported", `the plugin implements protocol ${m.protocol}; this Buwiz Bot supports ${hmaj}.${hmin}, so it needs a Buwiz Bot that supports ${maj}.${min}`);
+    throw new V1Error(
+      "protocol_unsupported",
+      `the plugin implements protocol ${m.protocol}; this Buwiz Bot supports ${hmaj}.${hmin}, so it needs a Buwiz Bot that supports ${maj}.${min}`,
+    );
 
   if (!isSemver(m.version) || m.version.length > LIMITS.version) throw invalid("version", `must be semver, at most ${LIMITS.version} characters`);
 }
@@ -490,7 +497,8 @@ function signatureOf(m, trust) {
 
   if (key.publisher && key.publisher !== m.publisher.id) throw invalid("publisher.id", `key ${m.publisher.key_id} belongs to ${key.publisher}`);
 
-  if (!isString(m.id) || !isApproved(trust, m.id, m.publisher.key_id)) throw invalid("id", `${String(m.id).slice(0, 80)} is not on the approved list for key ${m.publisher.key_id}`);
+  if (!isString(m.id) || !isApproved(trust, m.id, m.publisher.key_id))
+    throw invalid("id", `${String(m.id).slice(0, 80)} is not on the approved list for key ${m.publisher.key_id}`);
 
   const s = obj(m.signature, "signature");
 
@@ -554,7 +562,8 @@ export function checkTools(m, tools) {
   for (const t of tools) {
     if (isV1("reservedTool", t.name)) continue;
 
-    if (!isV1("tool", t.name) || !t.name.startsWith(`${m.short}_`)) throw invalid("tools/list", `tool ${String(t.name).slice(0, 80)} must follow the tool grammar and start with ${m.short}_`);
+    if (!isV1("tool", t.name) || !t.name.startsWith(`${m.short}_`))
+      throw invalid("tools/list", `tool ${String(t.name).slice(0, 80)} must follow the tool grammar and start with ${m.short}_`);
     names.add(t.name);
   }
 
@@ -575,7 +584,8 @@ export function checkTools(m, tools) {
 
       if (!t) throw invalid(`routines[${i}].writes[${k}]`, `names ${name}, which the plugin's tools/list does not have`);
 
-      if (t.annotations?.readOnlyHint === true) throw invalid(`routines[${i}].writes[${k}]`, `${name} is read-only (readOnlyHint): writes lists only tools that change data`);
+      if (t.annotations?.readOnlyHint === true)
+        throw invalid(`routines[${i}].writes[${k}]`, `${name} is read-only (readOnlyHint): writes lists only tools that change data`);
     }
   }
 }
@@ -652,7 +662,11 @@ export function validateProps(s, props) {
 const mb = (n) => (n >= 1024 * 1024 ? `${Math.round((n / 1048576) * 10) / 10} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 // the description's first word (6.6) without trailing punctuation ("Return:")
-const noun = (s) => String(s?.description || s?.name || "").trim().split(/\s+/)[0].replace(/[^\p{L}\p{N}]+$/u, "") || s?.name;
+const noun = (s) =>
+  String(s?.description || s?.name || "")
+    .trim()
+    .split(/\s+/)[0]
+    .replace(/[^\p{L}\p{N}]+$/u, "") || s?.name;
 
 function permissionLines(m, p) {
   if (!p) return [];

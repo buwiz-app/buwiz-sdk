@@ -55,7 +55,12 @@ const keysAre = (o, names) => {
 export function pressOf(actor, press) {
   if (actor === "person" || press === null || typeof press !== "object" || Array.isArray(press)) return undefined;
   const ai = press.by === "ai" && keysAre(press, ["by", "who"]) && isHandle(press.who);
-  const approved = press.by === "ai_approved" && keysAre(press, ["approved_by", "by", "once", "who"]) && isHandle(press.who) && isHandle(press.approved_by) && isOnce(press.once);
+  const approved =
+    press.by === "ai_approved" &&
+    keysAre(press, ["approved_by", "by", "once", "who"]) &&
+    isHandle(press.who) &&
+    isHandle(press.approved_by) &&
+    isOnce(press.once);
   return ai || approved ? press : undefined;
 }
 
@@ -78,7 +83,8 @@ const firstText = (r) => (r?.content || []).find((c) => c.type === "text")?.text
 /** A tool result's size as 13.2 counts it: structured plus text (and an
  *  embedded resource's text or blob), in bytes. */
 export function resultBytes(r) {
-  const piece = (c) => (c.type === "text" ? Buffer.byteLength(c.text || "") : c.type === "resource" ? Buffer.byteLength(String(c.resource?.text ?? c.resource?.blob ?? "")) : 0);
+  const piece = (c) =>
+    c.type === "text" ? Buffer.byteLength(c.text || "") : c.type === "resource" ? Buffer.byteLength(String(c.resource?.text ?? c.resource?.blob ?? "")) : 0;
   const text = (r?.content || []).reduce((n, c) => n + piece(c || {}), 0);
 
   return text + (r?.structuredContent === undefined ? 0 : Buffer.byteLength(JSON.stringify(r.structuredContent)));
@@ -102,7 +108,9 @@ const ACCOUNT_USE = "buwiz/account_use";
  * model still never see them (16.5). */
 export function hostResult(r) {
   const out = stripMeta(r);
-  const kept = Object.fromEntries(["buwiz/document", "buwiz/open_with", "buwiz/save", ACCOUNT_USE].filter((k) => r?._meta?.[k] !== undefined).map((k) => [k, r._meta[k]]));
+  const kept = Object.fromEntries(
+    ["buwiz/document", "buwiz/open_with", "buwiz/save", ACCOUNT_USE].filter((k) => r?._meta?.[k] !== undefined).map((k) => [k, r._meta[k]]),
+  );
 
   if (Object.keys(kept).length) out._meta = kept;
 
@@ -131,14 +139,21 @@ export function checkOpen(m, o) {
 
   if (o.ticket !== undefined && !isV1("ticket", o.ticket)) refuse("invalid_args", "ticket breaks the ticket grammar");
 
-  if (o.placement !== undefined && !app.placement.includes(o.placement)) refuse("invalid_args", `${app.id} does not declare placement ${String(o.placement).slice(0, 20)}`);
+  if (o.placement !== undefined && !app.placement.includes(o.placement))
+    refuse("invalid_args", `${app.id} does not declare placement ${String(o.placement).slice(0, 20)}`);
 
   // 16.2: an answer's small card; anything else is its main card
   if (o.size !== undefined && o.size !== "small" && o.size !== "main") refuse("invalid_args", "size must be small or main");
   const props = o.props ?? {};
 
   validateProps(app.props, props);
-  const out = { plugin: m.id, app: app.id, props, title: cap(isString(o.title) && o.title ? o.title : app.title, 60), placement: o.placement || app.placement[0] };
+  const out = {
+    plugin: m.id,
+    app: app.id,
+    props,
+    title: cap(isString(o.title) && o.title ? o.title : app.title, 60),
+    placement: o.placement || app.placement[0],
+  };
 
   if (o.ticket !== undefined) out.ticket = o.ticket;
 
@@ -186,8 +201,17 @@ export function createSessions(plugins) {
   }
 
   function certMatches(cert, b) {
-    return isObject(cert) && cert.v === 1 && cert.typ === "buwiz-session" && cert.plugin === b.plugin && cert.app === b.app && cert.open_id === b.open_id
-      && cert.ks_pub === b.ks_pub && cert.perms_sha256 === b.perms_sha256 && cert.not_after === b.not_after;
+    return (
+      isObject(cert) &&
+      cert.v === 1 &&
+      cert.typ === "buwiz-session" &&
+      cert.plugin === b.plugin &&
+      cert.app === b.app &&
+      cert.open_id === b.open_id &&
+      cert.ks_pub === b.ks_pub &&
+      cert.perms_sha256 === b.perms_sha256 &&
+      cert.not_after === b.not_after
+    );
   }
 
   /** POST /v1/host/sessions/open → {cert, cert_sig, plugin_pub, permissions}. */
@@ -205,7 +229,13 @@ export function createSessions(plugins) {
 
     if (permsDigest(app.permissions) !== b.perms_sha256) refuse("invalid_args", "perms_sha256 is not the digest of the installed app's permissions");
     const generation = rt.generation;
-    const res = await plugins.callReserved(b.plugin, "buwiz.session.open", { app: b.app, open_id: b.open_id, ks_pub: b.ks_pub, perms_sha256: b.perms_sha256, not_after: b.not_after });
+    const res = await plugins.callReserved(b.plugin, "buwiz.session.open", {
+      app: b.app,
+      open_id: b.open_id,
+      ks_pub: b.ks_pub,
+      perms_sha256: b.perms_sha256,
+      not_after: b.not_after,
+    });
 
     if (res === null) {
       await plugins.fail(b.plugin, "plugin_invalid", "the plugin does not implement buwiz.session.open");
@@ -224,8 +254,16 @@ export function createSessions(plugins) {
     }
 
     opens.set(b.open_id, {
-      plugin: b.plugin, app: b.app, open_id: b.open_id, cert: res.cert, cert_sig: res.cert_sig, generation,
-      nonces: new Map(), active: 0, queue: [], recent: [],
+      plugin: b.plugin,
+      app: b.app,
+      open_id: b.open_id,
+      cert: res.cert,
+      cert_sig: res.cert_sig,
+      generation,
+      nonces: new Map(),
+      active: 0,
+      queue: [],
+      recent: [],
     });
 
     return { ok: true, cert: res.cert, cert_sig: res.cert_sig, plugin_pub: row.plugin_pub, permissions: app.permissions || {} };
@@ -277,7 +315,13 @@ export function createSessions(plugins) {
     }
 
     // 2
-    if (envelope.v !== 1 || envelope.typ !== "buwiz-call" || envelope.plugin !== s.cert.plugin || envelope.app !== s.cert.app || envelope.open_id !== s.cert.open_id)
+    if (
+      envelope.v !== 1 ||
+      envelope.typ !== "buwiz-call" ||
+      envelope.plugin !== s.cert.plugin ||
+      envelope.app !== s.cert.app ||
+      envelope.open_id !== s.cert.open_id
+    )
       refuse("session_invalid", "the envelope names another plugin, app or open");
 
     // 3
@@ -297,7 +341,8 @@ export function createSessions(plugins) {
     const app = (plugins.manifestOf(row).apps || []).find((a) => a.id === s.app);
     const perms = app?.permissions || {};
 
-    if (!app || permsDigest(perms) !== s.cert.perms_sha256 || !(perms.tools || []).includes(envelope.tool)) refuse("permission_denied", `${String(envelope.tool).slice(0, 80)} is not in this app's permissions`);
+    if (!app || permsDigest(perms) !== s.cert.perms_sha256 || !(perms.tools || []).includes(envelope.tool))
+      refuse("permission_denied", `${String(envelope.tool).slice(0, 80)} is not in this app's permissions`);
 
     // 8
     if (plugins.disabledOf(row).has(envelope.tool)) refuse("disabled", `${envelope.tool} is switched off`);
@@ -351,7 +396,7 @@ export function createSessions(plugins) {
     // with permissions.preview gets the larger result limit
     const preview = envelope.purpose !== undefined;
 
-    if (preview && envelope.purpose !== "preview") refuse("invalid_args", "purpose must be \"preview\" when present");
+    if (preview && envelope.purpose !== "preview") refuse("invalid_args", 'purpose must be "preview" when present');
 
     if (preview && !isObject(perms.preview)) refuse("permission_denied", "this app has no preview permission");
     const max = preview ? Math.min(perms.preview.max_bytes ?? PREVIEW_MAX, PREVIEW_MAX) : RESULT_MAX;
@@ -361,7 +406,13 @@ export function createSessions(plugins) {
     if (Buffer.byteLength(canonicalize(args)) > ARGS_MAX) refuse("invalid_args", `args are over ${ARGS_MAX} bytes`);
 
     if (!rt.tools.some((t) => t.name === envelope.tool)) refuse("not_found", `${s.plugin} has no tool ${envelope.tool}`);
-    if (!mayReach(envelope.actor, rt.tools.find((t) => t.name === envelope.tool))) refuse("permission_denied", `${envelope.tool} is a person's to run`);
+    if (
+      !mayReach(
+        envelope.actor,
+        rt.tools.find((t) => t.name === envelope.tool),
+      )
+    )
+      refuse("permission_denied", `${envelope.tool} is a person's to run`);
     rate(s);
     await slot(s);
     let r;
@@ -380,9 +431,11 @@ export function createSessions(plugins) {
 
     if (r.isError) refuse("tool_error", cap(firstText(r) || `${envelope.tool} failed`, 500));
 
-    if (resultBytes(r) > max) refuse("result_too_large", `${envelope.tool}'s result is over ${preview ? `${Math.round((max / 1048576) * 10) / 10} MiB` : "1 MiB"}`);
+    if (resultBytes(r) > max)
+      refuse("result_too_large", `${envelope.tool}'s result is over ${preview ? `${Math.round((max / 1048576) * 10) / 10} MiB` : "1 MiB"}`);
 
-    if (r?._meta?.[ACCOUNT_USE] !== undefined && !mayUseAccount(envelope.actor, plugins.firstParty(plugins.rowOf(s.plugin)))) refuse("permission_denied", "only a person's own press in a first-party plugin switches accounts");
+    if (r?._meta?.[ACCOUNT_USE] !== undefined && !mayUseAccount(envelope.actor, plugins.firstParty(plugins.rowOf(s.plugin))))
+      refuse("permission_denied", "only a person's own press in a first-party plugin switches accounts");
 
     return { ok: true, result: hostResult(r) };
   }
@@ -462,8 +515,9 @@ export function createSessions(plugins) {
 
     if (plugins.disabledOf(row).has(entry.resolve)) refuse("disabled", `${entry.resolve} is switched off`);
 
-    const attached = (isObject(b.context) && Array.isArray(b.context.attached) ? b.context.attached : [])
-      .flatMap((a) => (isObject(a) && isString(a.scope) && isV1("canonicalToken", a.token) ? [{ scope: a.scope, token: a.token }] : []));
+    const attached = (isObject(b.context) && Array.isArray(b.context.attached) ? b.context.attached : []).flatMap((a) =>
+      isObject(a) && isString(a.scope) && isV1("canonicalToken", a.token) ? [{ scope: a.scope, token: a.token }] : [],
+    );
 
     const input = { kind: b.kind, name: b.name, value: String(b.value ?? ""), complete: b.complete === true, context: { attached } };
 
@@ -490,7 +544,8 @@ export function createSessions(plugins) {
 
     if (contents.length !== 1 || !isString(contents[0].text)) refuse("plugin_invalid", `${app.entry} must answer exactly one text content`);
 
-    if (contents[0].mimeType !== undefined && contents[0].mimeType !== app.mime) refuse("plugin_invalid", `${app.entry} is ${contents[0].mimeType}, not ${app.mime}`);
+    if (contents[0].mimeType !== undefined && contents[0].mimeType !== app.mime)
+      refuse("plugin_invalid", `${app.entry} is ${contents[0].mimeType}, not ${app.mime}`);
     const source = contents[0].text;
 
     if (Buffer.byteLength(source, "utf8") > SOURCE_MAX) refuse("result_too_large", `${app.entry} is over 512 KiB`);

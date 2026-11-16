@@ -20,7 +20,8 @@ const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 export function schemaProblem(schema) {
   if (!isObj(schema) || schema.type !== "object" || !isObj(schema.properties)) return 'must be {type: "object", properties: {...}}';
 
-  for (const k of Object.keys(schema)) if (!["type", "properties", "required", "additionalProperties", "description"].includes(k)) return `has unknown key ${k}`;
+  for (const k of Object.keys(schema))
+    if (!["type", "properties", "required", "additionalProperties", "description"].includes(k)) return `has unknown key ${k}`;
 
   if (schema.additionalProperties !== undefined && schema.additionalProperties !== false) return "additionalProperties may only be false";
   const names = Object.keys(schema.properties);
@@ -62,9 +63,11 @@ function propProblem(p, arrays) {
 
   if (p.items !== undefined || p.maxItems !== undefined) return "has items but is no array";
 
-  if (p.enum !== undefined && (!Array.isArray(p.enum) || !p.enum.length || p.enum.some((v) => valueProblem({ type: p.type }, v)))) return `enum must list ${p.type} values`;
+  if (p.enum !== undefined && (!Array.isArray(p.enum) || !p.enum.length || p.enum.some((v) => valueProblem({ type: p.type }, v))))
+    return `enum must list ${p.type} values`;
 
-  if (p.maxLength !== undefined && !(p.type === "string" && Number.isInteger(p.maxLength) && p.maxLength > 0)) return "maxLength is for strings, a positive integer";
+  if (p.maxLength !== undefined && !(p.type === "string" && Number.isInteger(p.maxLength) && p.maxLength > 0))
+    return "maxLength is for strings, a positive integer";
 
   return "";
 }
@@ -84,7 +87,12 @@ function valueProblem(p, v) {
     return "";
   }
 
-  const ok = { string: typeof v === "string", integer: Number.isInteger(v), number: typeof v === "number" && Number.isFinite(v), boolean: typeof v === "boolean" }[p.type];
+  const ok = {
+    string: typeof v === "string",
+    integer: Number.isInteger(v),
+    number: typeof v === "number" && Number.isFinite(v),
+    boolean: typeof v === "boolean",
+  }[p.type];
 
   if (!ok) return `must be a ${p.type}`;
 

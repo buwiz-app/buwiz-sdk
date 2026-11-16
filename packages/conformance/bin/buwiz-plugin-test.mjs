@@ -64,7 +64,19 @@ const CALL_MS = 10_000;
 // ── options ──────────────────────────────────────────────────────────────
 
 export function parseArgs(argv) {
-  const o = { command: "", args: [], env: {}, manifest: "", signWith: "", keyFile: "", keyId: "", manifestEnv: "BUWIZ_PLUGIN_MANIFEST", json: false, firstParty: false, keygen: "" };
+  const o = {
+    command: "",
+    args: [],
+    env: {},
+    manifest: "",
+    signWith: "",
+    keyFile: "",
+    keyId: "",
+    manifestEnv: "BUWIZ_PLUGIN_MANIFEST",
+    json: false,
+    firstParty: false,
+    keygen: "",
+  };
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -151,7 +163,11 @@ const expect = (cond, msg) => {
   if (!cond) throw new Error(msg);
 };
 
-const codeOf = (p) => p.then(() => "resolved", (e) => e?.code ?? String(e?.message || e));
+const codeOf = (p) =>
+  p.then(
+    () => "resolved",
+    (e) => e?.code ?? String(e?.message || e),
+  );
 const errText = (e) => String(e?.message || e).slice(0, 200);
 
 // a raw MCP client on the plugin, as Buwiz Bot's would be, with stderr kept
@@ -241,7 +257,12 @@ async function staticApp(source, file) {
 
   const r = await build({
     stdin: { contents: source, loader: "tsx", sourcefile: file },
-    bundle: true, write: false, format: "esm", jsx: "preserve", metafile: true, logLevel: "silent",
+    bundle: true,
+    write: false,
+    format: "esm",
+    jsx: "preserve",
+    metafile: true,
+    logLevel: "silent",
     plugins: [{ name: "imports", setup: (b) => b.onResolve({ filter: /.*/ }, (a) => (imports.push(a.path), { path: a.path, external: true })) }],
   });
 
@@ -293,7 +314,8 @@ function checkResolve(m, data) {
 
 export async function runPluginTest(o) {
   // a real store says itself which keys are first-party
-  if (process.env.BUWIZ_TRUST_FILE && o.firstParty) throw new Error("--first-party marks this run's own trust; with BUWIZ_TRUST_FILE the store says which keys are first-party");
+  if (process.env.BUWIZ_TRUST_FILE && o.firstParty)
+    throw new Error("--first-party marks this run's own trust; with BUWIZ_TRUST_FILE the store says which keys are first-party");
   const dir = mkdtempSync(join(tmpdir(), "buwiz-plugin-test-"));
   const { rows, run, skip } = checklist();
   const spec = { command: o.command, args: o.args, env: { ...o.env } };
@@ -330,7 +352,9 @@ export async function runPluginTest(o) {
       const keyId = signed?.publisher?.key_id;
 
       if (!o.keyFile && !store) throw new Error("--manifest needs --key-file, or BUWIZ_TRUST_FILE naming the trust file that holds the manifest's key");
-      const pubs = o.keyFile ? { [keyId]: pubOf(readKey(o.keyFile)) } : Object.fromEntries([...loadTrust(TRUST_FILE()).publishers].map(([k, p]) => [k, p.public_key]));
+      const pubs = o.keyFile
+        ? { [keyId]: pubOf(readKey(o.keyFile)) }
+        : Object.fromEntries([...loadTrust(TRUST_FILE()).publishers].map(([k, p]) => [k, p.public_key]));
 
       writeFileSync(manifestFile, readFileSync(o.manifest));
 
@@ -421,17 +445,33 @@ export async function runPluginTest(o) {
 
     // RSV-02, RSV-03: session certificates
     const app = (m?.apps || [])[0];
-    const reservedArgs = (over) => ({ app: app?.id, open_id: random128(), ks_pub: generate().pub, perms_sha256: permsDigest(app?.permissions), not_after: Date.now() + 3600_000, ...over });
+    const reservedArgs = (over) => ({
+      app: app?.id,
+      open_id: random128(),
+      ks_pub: generate().pub,
+      perms_sha256: permsDigest(app?.permissions),
+      not_after: Date.now() + 3600_000,
+      ...over,
+    });
     const isInvalid = (r) => r.isError && resultData(r)?.code === "invalid_args";
 
     await run("RSV-02", "buwiz.session.open with an unknown app fails invalid_args", async () => {
-      expect(isInvalid(await callRaw(raw, "buwiz.session.open", reservedArgs({ app: "sdk-no-such-app" }))), "an unknown app was not refused with code invalid_args");
+      expect(
+        isInvalid(await callRaw(raw, "buwiz.session.open", reservedArgs({ app: "sdk-no-such-app" }))),
+        "an unknown app was not refused with code invalid_args",
+      );
     });
 
     if (app) {
       await run("RSV-02", `buwiz.session.open of ${app.id} with a wrong perms_sha256, or not_after past 8 h, fails invalid_args`, async () => {
-        expect(isInvalid(await callRaw(raw, "buwiz.session.open", reservedArgs({ perms_sha256: permsDigest({ tools: ["sdk_not_granted"] }) }))), "a wrong perms_sha256 was not refused");
-        expect(isInvalid(await callRaw(raw, "buwiz.session.open", reservedArgs({ not_after: Date.now() + 9 * 3600_000 }))), "a certificate over 8 h was not refused");
+        expect(
+          isInvalid(await callRaw(raw, "buwiz.session.open", reservedArgs({ perms_sha256: permsDigest({ tools: ["sdk_not_granted"] }) }))),
+          "a wrong perms_sha256 was not refused",
+        );
+        expect(
+          isInvalid(await callRaw(raw, "buwiz.session.open", reservedArgs({ not_after: Date.now() + 9 * 3600_000 }))),
+          "a certificate over 8 h was not refused",
+        );
       });
 
       await run("RSV-03", `the session certificate for ${app.id} is the request, signed by the plugin key over JCS (5.5)`, async () => {
@@ -440,11 +480,24 @@ export async function runPluginTest(o) {
         const d = resultData(r);
 
         expect(!r.isError && isObject(d?.cert), `buwiz.session.open answered ${JSON.stringify(d)?.slice(0, 120)}`);
-        const want = { v: 1, typ: "buwiz-session", plugin: m.id, app: app.id, open_id: req.open_id, ks_pub: req.ks_pub, perms_sha256: req.perms_sha256, not_after: req.not_after };
+        const want = {
+          v: 1,
+          typ: "buwiz-session",
+          plugin: m.id,
+          app: app.id,
+          open_id: req.open_id,
+          ks_pub: req.ks_pub,
+          perms_sha256: req.perms_sha256,
+          not_after: req.not_after,
+        };
 
-        expect(JSON.stringify(Object.keys(d.cert).sort()) === JSON.stringify(Object.keys(want).sort()), `the certificate has fields ${Object.keys(d.cert).join(", ")}`);
+        expect(
+          JSON.stringify(Object.keys(d.cert).sort()) === JSON.stringify(Object.keys(want).sort()),
+          `the certificate has fields ${Object.keys(d.cert).join(", ")}`,
+        );
 
-        for (const [k, v] of Object.entries(want)) expect(d.cert[k] === v, `cert.${k} is ${JSON.stringify(d.cert[k])?.slice(0, 60)}, not ${JSON.stringify(v)?.slice(0, 60)}`);
+        for (const [k, v] of Object.entries(want))
+          expect(d.cert[k] === v, `cert.${k} is ${JSON.stringify(d.cert[k])?.slice(0, 60)}, not ${JSON.stringify(v)?.slice(0, 60)}`);
         expect(verify(key.pub, signedBytes(d.cert), d.cert_sig), "cert_sig does not verify with the plugin public key");
 
         // RSV-05 below closes this open
@@ -456,7 +509,10 @@ export async function runPluginTest(o) {
       const closed = resultData(await callRaw(raw, "buwiz.session.close", { open_id: raw.openId || random128() }));
 
       expect(closed?.ok === true, `buwiz.session.close answered ${JSON.stringify(closed)?.slice(0, 80)}`);
-      const code = await callRaw(raw, "buwiz.sdk.probe", {}).then(() => "answered", (e) => e?.code);
+      const code = await callRaw(raw, "buwiz.sdk.probe", {}).then(
+        () => "answered",
+        (e) => e?.code,
+      );
 
       expect(code === -32601, `buwiz.sdk.probe answered ${code}, not -32601`);
     });
@@ -486,7 +542,13 @@ export async function runPluginTest(o) {
     });
 
     if (installed) await brokerChecks(plugins, sessions, m, run, skip);
-    else for (const [id, what] of [["BRG-03", "signed calls"], ["RSV-04", "ticket titles"], ["INV-04", "resolve shapes"]]) skip(id, what, "the plugin did not install");
+    else
+      for (const [id, what] of [
+        ["BRG-03", "signed calls"],
+        ["RSV-04", "ticket titles"],
+        ["INV-04", "resolve shapes"],
+      ])
+        skip(id, what, "the plugin did not install");
 
     if (installed) await run("RSV-05", "uninstall through the broker (buwiz.uninstall, key removed)", () => plugins.uninstall(m.id).then(() => ""));
   } catch (e) {
@@ -500,7 +562,12 @@ export async function runPluginTest(o) {
   const logs = (raw?.stderr || "") + readLogs(logDir);
   const leaked = seeds.filter(Boolean).some((s) => logs.includes(s) || logs.includes(Buffer.from(s, "base64url").toString("base64").replace(/=+$/, "")));
 
-  rows.push({ id: "RSV-03", what: "the plugin never writes its key to stderr (5.4, P4)", status: leaked || /\[redacted key\]/.test(logs) ? "fail" : "pass", note: leaked ? "a seed appeared in stderr" : "" });
+  rows.push({
+    id: "RSV-03",
+    what: "the plugin never writes its key to stderr (5.4, P4)",
+    status: leaked || /\[redacted key\]/.test(logs) ? "fail" : "pass",
+    note: leaked ? "a seed appeared in stderr" : "",
+  });
   rmSync(dir, { recursive: true, force: true });
 
   return { plugin: m ? { id: m.id, short: m.short, version: m.version } : null, trust: trustReport, rows, ok: rows.every((r) => r.status !== "fail") };
@@ -551,14 +618,24 @@ function trustOf(trustFile, store, keyFrom, manifestFile) {
 }
 
 function writeTrust(file, pubs, m, firstParty = false) {
-  const publishers = Object.fromEntries(Object.entries(pubs).map(([k, pub]) => [k, { publisher: String(m?.publisher?.id || ""), alg: "ed25519", public_key: pub, ...(firstParty ? { first_party: true } : {}) }]));
+  const publishers = Object.fromEntries(
+    Object.entries(pubs).map(([k, pub]) => [
+      k,
+      { publisher: String(m?.publisher?.id || ""), alg: "ed25519", public_key: pub, ...(firstParty ? { first_party: true } : {}) },
+    ]),
+  );
 
-  writeFileSync(file, JSON.stringify({ v: 1, publishers, approved_plugins: [{ id: String(m?.id || ""), publisher_key_id: String(m?.publisher?.key_id || "") }] }));
+  writeFileSync(
+    file,
+    JSON.stringify({ v: 1, publishers, approved_plugins: [{ id: String(m?.id || ""), publisher_key_id: String(m?.publisher?.key_id || "") }] }),
+  );
 }
 
 function readLogs(logDir) {
   try {
-    return readdirSync(logDir).map((f) => readFileSync(join(logDir, f), "utf8")).join("\n");
+    return readdirSync(logDir)
+      .map((f) => readFileSync(join(logDir, f), "utf8"))
+      .join("\n");
   } catch {
     return "";
   }
@@ -575,7 +652,10 @@ async function appChecks(raw, a, run) {
     expect(contents[0].mimeType === undefined || contents[0].mimeType === a.mime, `${a.entry} is ${contents[0].mimeType}`);
     source = contents[0].text;
     expect(Buffer.byteLength(source) <= SOURCE_MAX, `${a.entry} is over ${SOURCE_MAX} bytes`);
-    expect(fingerprintOf(Buffer.from(source, "utf8")) === a.fingerprint, `the served source's fingerprint is ${fingerprintOf(Buffer.from(source, "utf8"))}, the manifest says ${a.fingerprint}`);
+    expect(
+      fingerprintOf(Buffer.from(source, "utf8")) === a.fingerprint,
+      `the served source's fingerprint is ${fingerprintOf(Buffer.from(source, "utf8"))}, the manifest says ${a.fingerprint}`,
+    );
   });
 
   if (source === null) return;
@@ -604,15 +684,28 @@ async function appChecks(raw, a, run) {
 // APP-01..04 for a native screen: the host builds it, so there is no
 // source to check; what a host needs of the entry is checked instead.
 async function nativeChecks(m, a, trust, run, skip) {
-  await run("APP-01", `${a.id}: a native screen (no entry, mime, sdk or fingerprint) whose id ${JSON.stringify(a.native?.screen)} is 1 to 64 of a-z 0-9 . _ - (6.8)`, () => {
-    expect(["entry", "mime", "sdk", "fingerprint"].every((k) => a[k] === undefined), "a native screen serves no source");
-    expect(typeof a.native?.screen === "string" && NATIVE_SCREEN.test(a.native.screen), `the screen id ${JSON.stringify(a.native?.screen)} is not 1 to 64 of a-z 0-9 . _ -`);
-  });
+  await run(
+    "APP-01",
+    `${a.id}: a native screen (no entry, mime, sdk or fingerprint) whose id ${JSON.stringify(a.native?.screen)} is 1 to 64 of a-z 0-9 . _ - (6.8)`,
+    () => {
+      expect(
+        ["entry", "mime", "sdk", "fingerprint"].every((k) => a[k] === undefined),
+        "a native screen serves no source",
+      );
+      expect(
+        typeof a.native?.screen === "string" && NATIVE_SCREEN.test(a.native.screen),
+        `the screen id ${JSON.stringify(a.native?.screen)} is not 1 to 64 of a-z 0-9 . _ -`,
+      );
+    },
+  );
   await run("APP-02", `${a.id}: native.abi ${JSON.stringify(a.native?.abi)} is one this host runs (${NATIVE_ABIS.join(", ")})`, () => {
     expect(NATIVE_ABIS.includes(a.native?.abi), `this host runs native abi ${NATIVE_ABIS.join(", ")}`);
   });
   await run("APP-03", `${a.id}: signed by a first-party publisher key (native screens are first-party only)`, () => {
-    expect(trust.publishers.get(m.publisher?.key_id)?.first_party === true, `key ${m.publisher?.key_id} is not first-party; run with --first-party, or use a store that marks it`);
+    expect(
+      trust.publishers.get(m.publisher?.key_id)?.first_party === true,
+      `key ${m.publisher?.key_id} is not first-party; run with --first-party, or use a store that marks it`,
+    );
   });
   skip("APP-04", `${a.id}: no network globals`, "a native screen has no TSX source; Buwiz Bot builds it");
 }
@@ -628,7 +721,18 @@ async function openAs(sessions, m, app) {
 }
 
 function envelope(open, tool, args = {}, signer = open.ks.seed) {
-  const env = { v: 1, typ: "buwiz-call", plugin: open.plugin, app: open.app, open_id: open.open_id, tool, args, actor: "person", ts: Date.now(), nonce: random128() };
+  const env = {
+    v: 1,
+    typ: "buwiz-call",
+    plugin: open.plugin,
+    app: open.app,
+    open_id: open.open_id,
+    tool,
+    args,
+    actor: "person",
+    ts: Date.now(),
+    nonce: random128(),
+  };
 
   return { envelope: env, sig: sign(signer, signedBytes(env)) };
 }
@@ -644,7 +748,9 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 
   // fingerprints of what the running plugin serves (the broker's check)
   for (const a of (m.apps || []).filter((x) => x.native === undefined))
-    await run("APP-01", `${a.id}: the broker's source check passes (fingerprint_mismatch otherwise)`, () => sessions.appSource({ plugin: m.id, app: a.id }).then(() => ""));
+    await run("APP-01", `${a.id}: the broker's source check passes (fingerprint_mismatch otherwise)`, () =>
+      sessions.appSource({ plugin: m.id, app: a.id }).then(() => ""),
+    );
 
   // BRG-03, BRG-04, BRG-06: a session per app with tools, one signed call per tool
   const withTools = (m.apps || []).filter((a) => a.permissions?.tools?.length);
@@ -680,7 +786,9 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
       });
 
     if (!first) continue;
-    await run("BRG-04", `${a.id}: the same envelope sent again is replayed`, async () => expect((await codeOf(sessions.call(first))) === "replayed", "a replayed envelope was not refused"));
+    await run("BRG-04", `${a.id}: the same envelope sent again is replayed`, async () =>
+      expect((await codeOf(sessions.call(first))) === "replayed", "a replayed envelope was not refused"),
+    );
     await run("BRG-06", `${a.id}: an envelope signed by another key is bad_signature`, async () => {
       const code = await codeOf(sessions.call(envelope(open, a.permissions.tools[0], {}, generate().seed)));
 
@@ -696,45 +804,67 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
   const entries = [...(m.commands || []).map((c) => ["command", c]), ...(m.scopes || []).map((s) => ["scope", s])];
 
   const resolveRaw = (kind, e, value, complete) =>
-    plugins.callTool(m.id, e.resolve, { kind, name: e.name, value, complete, context: { attached: [] } }, { meta: { "buwiz/caller": { origin: "resolve", plugin: m.id, ts: Date.now() } }, timeout: 10_000 });
+    plugins.callTool(
+      m.id,
+      e.resolve,
+      { kind, name: e.name, value, complete, context: { attached: [] } },
+      { meta: { "buwiz/caller": { origin: "resolve", plugin: m.id, ts: Date.now() } }, timeout: 10_000 },
+    );
 
   if (!entries.length) skip("INV-04", "resolve shapes", "the manifest has no commands or scopes");
 
   for (const [kind, e] of entries) {
     // the tickets this entry's own completion offered (13.5: a chosen one)
     const offered = [];
-    const modes = kind === "scope" ? [["", true], ["sdk-probe", false]] : [["", false], ["sdk-probe", false]];
+    const modes =
+      kind === "scope"
+        ? [
+            ["", true],
+            ["sdk-probe", false],
+          ]
+        : [
+            ["", false],
+            ["sdk-probe", false],
+          ];
 
     for (const [value, complete] of modes) {
       let prompt = null;
 
-      await run(kind === "command" ? "INV-05" : "INV-04", `${kind} ${e.name}: ${e.resolve} with value ${JSON.stringify(value)} and complete: ${complete} answers a 15.2 shape within its caps${kind === "command" ? "; an open names an app of this plugin" : ""}`, async () => {
-        const r = await resolveRaw(kind, e, value, complete);
+      await run(
+        kind === "command" ? "INV-05" : "INV-04",
+        `${kind} ${e.name}: ${e.resolve} with value ${JSON.stringify(value)} and complete: ${complete} answers a 15.2 shape within its caps${kind === "command" ? "; an open names an app of this plugin" : ""}`,
+        async () => {
+          const r = await resolveRaw(kind, e, value, complete);
 
-        if (r.isError) return "answered isError (shown as an error)";
-        const data = resultData(r);
+          if (r.isError) return "answered isError (shown as an error)";
+          const data = resultData(r);
 
-        const issued = checkResolve(m, data);
+          const issued = checkResolve(m, data);
 
-        // a prompt's own rules are INV-10's, below
-        if (data.result === "prompt") return ((prompt = data), "result prompt (INV-10)");
+          // a prompt's own rules are INV-10's, below
+          if (data.result === "prompt") return ((prompt = data), "result prompt (INV-10)");
 
-        tickets.push(...issued);
-        if (complete) offered.push(...issued);
-        await sessions.resolve({ plugin: m.id, kind, name: e.name, value, complete });
+          tickets.push(...issued);
+          if (complete) offered.push(...issued);
+          await sessions.resolve({ plugin: m.id, kind, name: e.name, value, complete });
 
-        return `result ${data.result}`;
-      });
+          return `result ${data.result}`;
+        },
+      );
 
       if (prompt)
-        await run("INV-10", `${kind} ${e.name}: the prompt ${e.resolve} answers for ${JSON.stringify(value)} is a command's, non-blank, at most ${PROMPT_MAX} characters, and passes the broker unchanged`, async () => {
-          checkPrompt(kind, prompt);
-          const res = await sessions.resolve({ plugin: m.id, kind, name: e.name, value, complete });
+        await run(
+          "INV-10",
+          `${kind} ${e.name}: the prompt ${e.resolve} answers for ${JSON.stringify(value)} is a command's, non-blank, at most ${PROMPT_MAX} characters, and passes the broker unchanged`,
+          async () => {
+            checkPrompt(kind, prompt);
+            const res = await sessions.resolve({ plugin: m.id, kind, name: e.name, value, complete });
 
-          expect(res.result === "prompt" && res.text === prompt.text, `the broker answered ${res.result}`);
+            expect(res.result === "prompt" && res.text === prompt.text, `the broker answered ${res.result}`);
 
-          return `${[...prompt.text].length} characters`;
-        });
+            return `${[...prompt.text].length} characters`;
+          },
+        );
     }
 
     // an attachable scope: a chosen completion resolves to a token (13.5)
@@ -779,7 +909,8 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 function trustLine(t, id) {
   if (!t) return "trust: (none)";
 
-  if (!t.store) return `trust: this run's own, key ${t.key_id} from ${t.key_from}, ${id || "the plugin"} approved for this run only (set BUWIZ_TRUST_FILE to check a real trust store)`;
+  if (!t.store)
+    return `trust: this run's own, key ${t.key_id} from ${t.key_from}, ${id || "the plugin"} approved for this run only (set BUWIZ_TRUST_FILE to check a real trust store)`;
   const key = t.key_from ? `key ${t.key_id} trusted` : `key ${t.key_id} NOT in it`;
 
   return `trust: BUWIZ_TRUST_FILE ${t.store}: ${key}, ${id || "the plugin"} ${t.approved ? "approved" : "NOT approved"}`;
@@ -795,7 +926,9 @@ export function format(res, o) {
     `Buwiz Mini App Protocol 1.0, plugin checks: ${head}`,
     `  ${[o.command, ...o.args].join(" ")}`,
     `  ${trustLine(res.trust, res.plugin?.id)}`,
-    ...res.rows.toSorted((a, b) => (a.id === b.id ? 0 : a.id < b.id ? -1 : 1)).map((r) => `  ${mark[r.status]} ${r.id} ${word[r.status]}  ${r.what}${r.note ? `\n        ${r.note}` : ""}`),
+    ...res.rows
+      .toSorted((a, b) => (a.id === b.id ? 0 : a.id < b.id ? -1 : 1))
+      .map((r) => `  ${mark[r.status]} ${r.id} ${word[r.status]}  ${r.what}${r.note ? `\n        ${r.note}` : ""}`),
     `${n("pass")} pass, ${n("fail")} fail, ${n("skip")} skipped: ${res.ok ? "conforms" : "does NOT conform"}`,
   ].join("\n");
 }
@@ -806,7 +939,9 @@ async function main(argv) {
   if (o.keygen) {
     const pub = keygen(resolvePath(o.keygen));
 
-    console.log(`wrote ${o.keygen} (0600). Public key: ${pub}\nKeep it for local tests only; sign a release manifest with buwiz-sign-manifest and your publisher key.`);
+    console.log(
+      `wrote ${o.keygen} (0600). Public key: ${pub}\nKeep it for local tests only; sign a release manifest with buwiz-sign-manifest and your publisher key.`,
+    );
 
     return 0;
   }

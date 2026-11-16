@@ -165,7 +165,11 @@ function parser(text) {
 
     if (c === '"') return string();
 
-    for (const [word, v] of [["true", true], ["false", false], ["null", null]])
+    for (const [word, v] of [
+      ["true", true],
+      ["false", false],
+      ["null", null],
+    ])
       if (text.startsWith(word, i)) {
         i += word.length;
 

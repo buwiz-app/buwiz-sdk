@@ -25,10 +25,12 @@ export function loadTrust(file = TRUST_FILE()) {
   const publishers = new Map();
 
   for (const [keyId, p] of Object.entries(isObject(raw.publishers) ? raw.publishers : {}))
-    if (isObject(p) && p.alg === "ed25519" && fromB64u(p.public_key, 32)) publishers.set(keyId, { publisher: String(p.publisher || ""), public_key: p.public_key, first_party: p.first_party === true });
+    if (isObject(p) && p.alg === "ed25519" && fromB64u(p.public_key, 32))
+      publishers.set(keyId, { publisher: String(p.publisher || ""), public_key: p.public_key, first_party: p.first_party === true });
 
   const approved = (Array.isArray(raw.approved_plugins) ? raw.approved_plugins : []).flatMap((a) =>
-    isObject(a) && isString(a.id) && isString(a.publisher_key_id) ? [{ id: a.id, publisher_key_id: a.publisher_key_id }] : []);
+    isObject(a) && isString(a.id) && isString(a.publisher_key_id) ? [{ id: a.id, publisher_key_id: a.publisher_key_id }] : [],
+  );
 
   return { publishers, approved };
 }

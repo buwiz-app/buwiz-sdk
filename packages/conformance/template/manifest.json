@@ -6,16 +6,16 @@
   "title": "Hello",
   "description": "The Mini App template: one tool, one scope, one app.",
   "publisher": { "id": "com.example", "key_id": "example-key-01", "name": "Example Publisher" },
-  "commands": [
-    { "name": "hello", "args": "[name]", "description": "Open Hello, optionally for a friend", "resolve": "hello_resolve" }
-  ],
-  "scopes": [
-    { "name": "friend", "description": "Friend by name", "resolve": "hello_resolve", "attach": true }
-  ],
+  "commands": [{ "name": "hello", "args": "[name]", "description": "Open Hello, optionally for a friend", "resolve": "hello_resolve" }],
+  "scopes": [{ "name": "friend", "description": "Friend by name", "resolve": "hello_resolve", "attach": true }],
   "apps": [
     {
-      "id": "hello", "title": "Hello", "description": "Greets a friend.",
-      "entry": "buwiz-app://hello", "mime": "text/x-nsh-tsx", "sdk": "1",
+      "id": "hello",
+      "title": "Hello",
+      "description": "Greets a friend.",
+      "entry": "buwiz-app://hello",
+      "mime": "text/x-nsh-tsx",
+      "sdk": "1",
       "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
       "props": { "type": "object", "properties": { "ticket": { "type": "string", "maxLength": 30 } } },
       "placement": ["full", "inline"],

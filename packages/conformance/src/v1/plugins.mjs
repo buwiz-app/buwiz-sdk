@@ -20,9 +20,7 @@ import { isV1 } from "../grammar.mjs";
 import { generate, pubOf } from "./ed.mjs";
 import { V1Error, refuse } from "./errors.mjs";
 import { isObject, isString, kindOf } from "./jcs.mjs";
-import {
-  HOST_PROTOCOL, MANIFEST_URI, addedPermissions, checkTools, compareSemver, permsDigest, reviewOf, verifyManifest,
-} from "./manifest.mjs";
+import { HOST_PROTOCOL, MANIFEST_URI, addedPermissions, checkTools, compareSemver, permsDigest, reviewOf, verifyManifest } from "./manifest.mjs";
 import { isApproved, loadTrust } from "./trust.mjs";
 
 // 5.3: the first-party publisher, whose approved plugins' answer cards
@@ -100,7 +98,21 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
   events.setMaxListeners(0);
 
   function runtime(id) {
-    if (!runtimes.has(id)) runtimes.set(id, { id, state: "stopped", code: null, message: "", generation: 0, conn: null, tools: [], manifest: null, instructions: "", restarts: [], timer: null, inflight: new Set() });
+    if (!runtimes.has(id))
+      runtimes.set(id, {
+        id,
+        state: "stopped",
+        code: null,
+        message: "",
+        generation: 0,
+        conn: null,
+        tools: [],
+        manifest: null,
+        instructions: "",
+        restarts: [],
+        timer: null,
+        inflight: new Set(),
+      });
 
     return runtimes.get(id);
   }
@@ -204,7 +216,8 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
         throw new V1Error("plugin_invalid", `buwiz.provision failed: ${String(e?.message || e).slice(0, 200)}`);
       }
 
-      if (prov?.ok !== true || !/^[0-9a-f]{64}$/.test(String(prov.manifest_sha256))) refuse("plugin_invalid", "buwiz.provision did not answer {ok: true, manifest_sha256}");
+      if (prov?.ok !== true || !/^[0-9a-f]{64}$/.test(String(prov.manifest_sha256)))
+        refuse("plugin_invalid", "buwiz.provision did not answer {ok: true, manifest_sha256}");
       const v = await readVerified(conn);
 
       if (prov.manifest_sha256 !== v.sha256) refuse("manifest_invalid", "buwiz.provision reports a manifest other than the one the plugin serves");
@@ -461,9 +474,21 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
 
     db.prepare(`INSERT OR REPLACE INTO v1_plugins(id,short,command,args,env,version,protocol,publisher_key_id,plugin_pub,manifest,manifest_sha256,tools,enabled,disabled_tools,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`).run(
-      m.id, m.short, spec.command, JSON.stringify(spec.args), JSON.stringify(spec.env), m.version, m.protocol, m.publisher.key_id, pub,
-      JSON.stringify(m), sha256, JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description || "", readOnly: t.annotations?.readOnlyHint === true }))),
-      prev?.disabled_tools || "[]", prev?.created_at || now, now,
+      m.id,
+      m.short,
+      spec.command,
+      JSON.stringify(spec.args),
+      JSON.stringify(spec.env),
+      m.version,
+      m.protocol,
+      m.publisher.key_id,
+      pub,
+      JSON.stringify(m),
+      sha256,
+      JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description || "", readOnly: t.annotations?.readOnlyHint === true }))),
+      prev?.disabled_tools || "[]",
+      prev?.created_at || now,
+      now,
     );
   }
 
@@ -498,7 +523,8 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
 
         if (u.same_version) refuse("manifest_changed", "the manifest changed without a version change");
 
-        if (u.downgrade && body.allow_downgrade !== true) refuse("invalid_args", `${m.version} is older than the installed ${row.version}`, { reason: "downgrade" });
+        if (u.downgrade && body.allow_downgrade !== true)
+          refuse("invalid_args", `${m.version} is older than the installed ${row.version}`, { reason: "downgrade" });
 
         if (u.added_permissions.length && body.approve_permissions !== true)
           refuse("consent_declined", "this update adds permissions the user has not approved", { reason: "permissions_added", added: u.added_permissions });
@@ -598,7 +624,12 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
     if (!conn) {
       const seed = await keys.get(id);
 
-      conn = seed && (await bootstrap({ command: row.command, args: parse(row.args, []), env: parse(row.env, {}) }, seed, {}, id).then((v) => v.conn, () => null));
+      conn =
+        seed &&
+        (await bootstrap({ command: row.command, args: parse(row.args, []), env: parse(row.env, {}) }, seed, {}, id).then(
+          (v) => v.conn,
+          () => null,
+        ));
       temp = !!conn;
     }
 
@@ -712,7 +743,12 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
   }
 
   /** Spawn every enabled plugin (server start). */
-  const startAll = () => Promise.all(rows().filter((r) => r.enabled).map((r) => spawn(r.id).catch(() => {})));
+  const startAll = () =>
+    Promise.all(
+      rows()
+        .filter((r) => r.enabled)
+        .map((r) => spawn(r.id).catch(() => {})),
+    );
 
   /** Stop every process (tests, shutdown). */
   async function stopAll() {
@@ -724,8 +760,25 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
   }
 
   return {
-    ...views, events, runtime, inspect, install, enable, disable, uninstall, setTool, spawn,
-    callTool, callReserved, readResource, fail, startAll, stopAll, trust, timeouts: T, clock,
+    ...views,
+    events,
+    runtime,
+    inspect,
+    install,
+    enable,
+    disable,
+    uninstall,
+    setTool,
+    spawn,
+    callTool,
+    callReserved,
+    readResource,
+    fail,
+    startAll,
+    stopAll,
+    trust,
+    timeouts: T,
+    clock,
     onClose: (f) => closers.push(f),
   };
 }
@@ -769,7 +822,12 @@ export function createViews({ db, runtime, trust }) {
       commands: m.commands || [],
       scopes: m.scopes || [],
       routines: (m.routines || []).map((r) => ({ ...r, reads_status: readsStatus(r), ...routineInfo(row.id, r) })),
-      tools: tools.map((t) => ({ name: t.name, description: t.description || "", disabled: off.has(t.name), readOnly: (t.annotations?.readOnlyHint ?? t.readOnly) === true })),
+      tools: tools.map((t) => ({
+        name: t.name,
+        description: t.description || "",
+        disabled: off.has(t.name),
+        readOnly: (t.annotations?.readOnlyHint ?? t.readOnly) === true,
+      })),
     };
   }
 
@@ -798,7 +856,13 @@ export function createViews({ db, runtime, trust }) {
   }
 
   return {
-    rowOf, rows, manifestOf, disabledOf, describe, readsStatus, firstParty,
+    rowOf,
+    rows,
+    manifestOf,
+    disabledOf,
+    describe,
+    readsStatus,
+    firstParty,
     useRoutineInfo: (f) => (routineInfo = f),
     list: () => rows().map(describe),
   };
