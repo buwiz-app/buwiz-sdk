@@ -25,7 +25,7 @@
 //!     const ID: &'static str = "app.buwiz.hello";
 //!     const NAME: &'static str = "hello-mini-app";
 //!     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-//!     const RELEASE_KEY_ID: &'static str = "example-2026-01";
+//!     const RELEASE_KEY_ID: &'static str = "example-key-01";
 //!
 //!     fn manifest(key_id: &str) -> Value {
 //!         json!({ "protocol": buwiz_plugin::PROTOCOL, "id": Self::ID, "short": "hello" /* … */ })

@@ -139,7 +139,7 @@ ones.
 | Plugin id       | `^[a-z][a-z0-9-]{0,62}(\.[a-z][a-z0-9-]{0,62}){2,7}$`                                      | At most 255 characters (3 to 8 labels). Not `buwiz.…`, `com.buwiz.bot` or `com.buwiz.bot.…` (the host's own). Buwiz plugins are `app.buwiz.<name>`. |
 | Short           | `^[a-z][a-z0-9]{1,15}$`                                                                    | Unique among enabled plugins. Reserved: `buwiz`, `app`, `chat`, `mcp`, `nsh`, `all`.                                                                |
 | Publisher id    | `^[a-z][a-z0-9-]{1,62}(\.[a-z0-9-]{1,62})*$`                                               | Buwiz's own is `app.buwiz`.                                                                                                                         |
-| Key id          | `^[a-z0-9][a-z0-9-]{0,63}$`                                                                | Selects a trust-store key, for example `example-2026-01`.                                                                                           |
+| Key id          | `^[a-z0-9][a-z0-9-]{0,63}$`                                                                | Selects a trust-store key, for example `example-key-01`.                                                                                            |
 | App id          | `^[a-z][a-z0-9-]{0,47}$`                                                                   | Unique within the plugin.                                                                                                                           |
 | Command name    | `^[a-z][a-z0-9-]{0,31}$`                                                                   | Unique within the plugin. Not a built-in command (`status`, `messages`).                                                                            |
 | Scope name      | `^[a-z][a-z0-9-]{0,31}$`                                                                   | Unique within the plugin.                                                                                                                           |
@@ -180,15 +180,17 @@ The host ships a trust store:
 ```json
 {
   "publishers": {
-    "example-2026-01": { "alg": "ed25519", "publisher": "app.buwiz", "public_key": "<b64url, 32 bytes>", "first_party": true }
+    "example-key-01": { "alg": "ed25519", "publisher": "app.buwiz", "public_key": "<b64url, 32 bytes>", "first_party": true }
   },
-  "approved_plugins": [{ "id": "app.buwiz.notes", "publisher_key_id": "example-2026-01" }]
+  "approved_plugins": [{ "id": "app.buwiz.notes", "publisher_key_id": "example-key-01" }]
 }
 ```
 
 - `publishers` maps a key id to an ed25519 public key (base64url without padding, 32 bytes), the publisher id
   it belongs to, and whether it is first party. An entry that is not `alg: "ed25519"` with a well-formed key
   is ignored.
+- `first_party` is `true` only for a key of the host's own maker; absent means `false`. It is the store's word,
+  not the plugin's: a store written for a test gives a key no standing in any other host.
 - `approved_plugins` lists the `(plugin id, publisher key id)` pairs the host installs. A plugin not on the
   list for the key that signed it cannot be installed, and no text of it reaches the model (section 18.3).
 - A missing or unreadable store trusts nothing. The host reads it at every verification, so a changed store
@@ -523,14 +525,14 @@ The older form: a signed index of the manifest and one binary per platform.
   "v": 1,
   "id": "app.buwiz.notes",
   "version": "1.2.0",
-  "publisher": { "key_id": "example-2026-01" },
+  "publisher": { "key_id": "example-key-01" },
   "manifest": { "asset": "manifest.signed.json", "sha256": "<64 hex>" },
   "binaries": {
     "macos-aarch64": { "asset": "notes-mini-app-macos-aarch64", "sha256": "<64 hex>" }
   },
   "run": { "args": ["mcp"], "env": { "BUWIZ_PLUGIN_MANIFEST": "{manifest}" } },
   "needs_env": [{ "key": "NOTES_TOKEN", "label": "Notes token", "secret": true }],
-  "signature": { "alg": "ed25519", "key_id": "example-2026-01", "value": "<b64url>" }
+  "signature": { "alg": "ed25519", "key_id": "example-key-01", "value": "<b64url>" }
 }
 ```
 
@@ -1500,7 +1502,7 @@ The manifest of a notes plugin. Fingerprints and the signature are placeholders:
   "version": "1.2.0",
   "title": "Notes",
   "description": "Notes and folders, in the chat and full screen.",
-  "publisher": { "id": "app.buwiz", "key_id": "example-2026-01", "name": "Buwiz" },
+  "publisher": { "id": "app.buwiz", "key_id": "example-key-01", "name": "Buwiz" },
   "commands": [
     { "name": "note", "args": "[folder]", "description": "Open a folder of notes", "resolve": "notes_resolve" },
     { "name": "draft", "description": "Start a note from a template", "resolve": "notes_resolve" }
@@ -1570,7 +1572,7 @@ The manifest of a notes plugin. Fingerprints and the signature are placeholders:
       "permissions": { "tools": ["notes_get", "notes_save"] }
     }
   ],
-  "signature": { "alg": "ed25519", "key_id": "example-2026-01", "value": "<86 characters of base64url>" }
+  "signature": { "alg": "ed25519", "key_id": "example-key-01", "value": "<86 characters of base64url>" }
 }
 ```
 
@@ -1609,8 +1611,8 @@ The same plugin as a package with one Google account and one skill. Hashes and t
       "macos-aarch64": { "path": "bin/notes-mini-app", "asset": "notes-mini-app-macos-aarch64", "sha256": "<64 hex>" },
       "linux-x86_64": { "path": "bin/notes-mini-app", "asset": "notes-mini-app-linux-x86_64", "sha256": "<64 hex>" }
     },
-    "publisher": { "id": "app.buwiz", "key_id": "example-2026-01" },
-    "signature": { "alg": "ed25519", "key_id": "example-2026-01", "value": "<86 characters of base64url>" }
+    "publisher": { "id": "app.buwiz", "key_id": "example-key-01" },
+    "signature": { "alg": "ed25519", "key_id": "example-key-01", "value": "<86 characters of base64url>" }
   }
 }
 ```

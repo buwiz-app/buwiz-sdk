@@ -51,7 +51,7 @@ impl Plugin for Notes {
     const ID: &'static str = "app.buwiz.notes";
     const NAME: &'static str = "notes-mini-app";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-    const RELEASE_KEY_ID: &'static str = "example-2026-01";
+    const RELEASE_KEY_ID: &'static str = "example-key-01";
 
     fn manifest(key_id: &str) -> Value { /* json!({ "protocol": buwiz_plugin::PROTOCOL, … }) */ }
     fn tools(&self) -> Vec<Tool> { /* notes_* */ }
