@@ -184,8 +184,9 @@ routine's query, `resolve` for resolve tools and `widget` for a generated widget
 agent, not the person, is driving your screen comes as `agent` too, unless the
 tool has `readOnlyHint: true`: your screen's own reads keep working as `app`, and a
 tool you keep for apps refuses its writes. A write reaches your tool only if the
-tool's `_meta["buwiz/audience"]` names `agent`: Buwiz Bot holds back every other
-write, unsent, and tells the person why. Each of these calls, reads included,
+tool's `_meta["buwiz/audience"]` names `agent`, or the tool opted in to the AI's
+press as described below: Buwiz Bot holds back every other write, unsent, and
+tells the person why. Each of these calls, reads included,
 carries `press`, the record of the press: `{by: "ai", who}`. The host sets
 `origin` and `press`; no app or plugin can claim either. So `origin: "app"`
 with a `press` is your screen reading while the AI drives it, not the person's

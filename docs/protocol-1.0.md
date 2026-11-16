@@ -956,8 +956,8 @@ For every `buwiz.call` and `buwiz.preview` the host builds, in native code:
 ```
 
 `actor` says who made the call: `"person"` for the person's own act, `"agent"` for a call the AI made while it drives
-the app's screen. The broker treats any other value, or none, as `"agent"`. When the actor is the AI, the host MAY add
-`press`, the record of that press (section 16.5). The host's own native code sets both under the signature; an app
+the app's screen. The broker treats any other value, or none, as `"agent"`. When the actor is the AI, the host MUST add
+`press`, the record of that press (section 16.5), and MUST NOT add one to the person's call. The host's own native code sets both under the signature; an app
 passes the bridge a tool and its arguments and nothing else, and a plugin never sets them.
 
 A preview adds `"purpose": "preview"`; no other `purpose` exists. `sig = Ed25519Sign(session key,
@@ -1149,7 +1149,9 @@ the array in three places:
 - Generated widgets (below). A tool is offered to widgets only when the array contains `"widget"`. An absent audience
   is not offered.
 
-A tool that wants the model, or the AI's press, or widgets, lists that word explicitly. An app's own calls (the
+A plugin MUST write the audience as an array: the host reads any other value (for example the string `"app"`) as
+absent, which leaves the tool on the model's surface. A tool that wants the model, or the AI's press, or widgets,
+lists that word explicitly. An app's own calls (the
 person's) do not depend on the audience.
 
 **Widgets.** A generated widget is a small program the Bot's model writes into a chat. It reads and changes data
@@ -1164,6 +1166,8 @@ through sources; a plugin offers tools to widgets by marking them `"widget"`:
   the person answers.
 - The call reaches the tool with `_meta["buwiz/caller"]` `{origin: "widget", plugin, widget, ts}`. `widget` is the
   widget's name, `R` and digits (for example `R37`). The call has no `app`, `open_id` or `press`.
+- The person's answer covers the source's tools, not a subject. A tool offered to widgets MUST check every ticket
+  or identifier argument as it does for the model (P1), and SHOULD take none it would not give the model.
 - The arguments are an object of at most 256 KiB. The call has the 120 s limit of section 22.2. A result over 1 MiB
   and an `isError` result are errors to the widget. Otherwise the widget receives the result's `structuredContent`, or
   when it has none the first text block.
@@ -1195,7 +1199,9 @@ A tool opts in with:
 
 A tool whose name contains one of the words `file`, `filing`, `submit`, `send`, `queue`, `pay`, `paid`, `void` or
 `reopen` can never opt in, whatever it declares: the AI never presses these. The words of a name are the runs of
-letters and digits in its lowercase form (`ledger_pay_run` has `pay`; `sendmail` has none).
+letters and digits in its lowercase form (`ledger_pay_run` has `pay`; `sendmail` has none). The name rule is a
+backstop that matches whole words only (`payment` is not `pay`); it is not the guard. A plugin MUST NOT opt in a
+tool that files, submits, sends, pays, voids or reopens, whatever the tool is called (P5).
 
 **The card.** The host holds the call unsent and reads `describe` with the arguments `{tool, args}` of the held call.
 The `describe` tool MUST be read-only and in the app's `permissions.tools`, and answers `structuredContent`
@@ -1537,7 +1543,7 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 
 | #   | Requirement                                                                                                                                                                                                          |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1  | Authorize every subject, not only the app: for each ticket or identifier argument, check it is one this caller may use (`buwiz/caller`), whatever its `origin`.                                                      |
+| P1  | Authorize every subject, not only the app: for each ticket or identifier argument, check it is one this caller may use (`buwiz/caller`), whatever its `origin`, a widget's included.                                 |
 | P2  | Issue tickets as random values and keep the subject map on the plugin's side.                                                                                                                                        |
 | P3  | Return only a title from `buwiz.ticket.resolve`.                                                                                                                                                                     |
 | P4  | Never log the plugin key, an account token, a subject, tool arguments or `buwiz.provision`'s content.                                                                                                                |

@@ -303,6 +303,32 @@ fn an_app_reaches_only_the_tools_its_certified_open_grants() {
 }
 
 #[test]
+fn a_write_the_ai_makes_through_an_app_needs_the_same_open_and_grant() {
+    let mut run = Run::new();
+    run.provision();
+    // such a call comes as origin agent, still naming its app and open
+    let ai = |app: &str, open_byte: u8| {
+        let mut caller = app_caller(app, open_byte);
+        caller["origin"] = json!("agent");
+        caller
+    };
+    let no_open = run.call("toy_add", json!({}), ai("fast", 4));
+    assert_eq!(result(&no_open)["code"], "permission_denied");
+    run.open("fast", 4);
+    run.open("board", 1);
+    let granted = run.call("toy_add", json!({}), ai("fast", 4));
+    assert_eq!(result(&granted)["added"], true);
+    // the board's open does not grant toy_add
+    let not_granted = run.call("toy_add", json!({}), ai("board", 1));
+    assert_eq!(result(&not_granted)["code"], "permission_denied");
+    // an open named without its app is no open
+    let no_app = json!({ "origin": "agent", "open_id": b64::encode(&[4; 16]) });
+    let refused = run.call("toy_add", json!({}), no_app);
+    assert_eq!(result(&refused)["code"], "permission_denied");
+    assert_eq!(run.server.plugin().calls, ["toy_add"]);
+}
+
+#[test]
 fn resolves_and_routines_only_read_unless_the_routine_declares_the_write() {
     let mut run = Run::new();
     run.provision();
@@ -328,7 +354,17 @@ fn resolves_and_routines_only_read_unless_the_routine_declares_the_write() {
     assert_eq!(result(&undeclared)["code"], "permission_denied");
     let agent = run.call("toy_add", json!({}), json!({ "origin": "agent" }));
     assert_eq!(result(&agent)["added"], true);
-    assert_eq!(run.server.plugin().calls, ["toy_add", "toy_add"]);
+    // a caller this library does not know, or none, reads and does not write
+    for unknown in [json!({ "origin": "somebody" }), json!(null)] {
+        let write = run.call("toy_add", json!({}), unknown.clone());
+        assert_eq!(result(&write)["code"], "permission_denied");
+        let read = run.call("toy_list", json!({}), unknown);
+        assert_eq!(result(&read)["text"], "milk");
+    }
+    assert_eq!(
+        run.server.plugin().calls,
+        ["toy_add", "toy_add", "toy_list", "toy_list"]
+    );
 }
 
 #[test]
@@ -569,6 +605,29 @@ fn a_press_record_reaches_the_tool_and_a_malformed_one_is_dropped() {
     ] {
         caller["press"] = bad;
         assert_eq!(whoami(&mut run, caller.clone())["press"], json!(null));
+    }
+    // `at` is a whole number from 0 to 2^53 - 1, however it is written
+    let at = |run: &mut Run, at: Value| {
+        let mut caller = caller.clone();
+        caller["press"] = approved.clone();
+        caller["press"]["at"] = at;
+        whoami(run, caller)["press"]["at"].clone()
+    };
+    assert_eq!(
+        at(&mut run, json!(1793000000000.0)),
+        json!(1793000000000_u64)
+    );
+    assert_eq!(
+        at(&mut run, json!(9007199254740991_u64)),
+        json!(9007199254740991_u64)
+    );
+    for bad in [
+        json!(1.5),
+        json!(-1),
+        json!(9007199254740992_u64),
+        json!("1"),
+    ] {
+        assert_eq!(at(&mut run, bad), json!(null));
     }
 }
 

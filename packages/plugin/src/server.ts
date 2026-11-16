@@ -79,7 +79,8 @@ export interface Tool {
   readOnly: boolean;
 }
 
-/** Who asked: _meta["buwiz/caller"]. "unknown": the broker sent none. */
+/** Who asked: _meta["buwiz/caller"]. "unknown": the broker sent none, or an
+ *  origin this library does not know; it only reads. */
 export type Origin = "app" | "agent" | "routine" | "resolve" | "widget" | "unknown";
 
 /** The record of an AI's press: _meta["buwiz/caller"].press (spec 16.5). Only
@@ -293,13 +294,16 @@ export class Server<P extends Plugin = Plugin> {
   /** The checks every plugin makes before its own tool runs; the refusal,
    *  or undefined to go ahead:
    *
-   *  - an app's call comes from an open this process certified for that
-   *    app, and names a tool in the app's permissions.tools;
-   *  - a resolve and a routine's query only read;
+   *  - a call through an app, the person's or the AI's (any call that names
+   *    an app or an open, whatever its origin), comes from an open this
+   *    process certified for that app, and names a tool in the app's
+   *    permissions.tools;
+   *  - a resolve, a routine's query and a caller this library does not know
+   *    only read;
    *  - a routine's turn only reads, or calls a write its routine declares. */
   authorize(tool: Tool, caller: Caller): string | undefined {
     const served = this.served.value();
-    if (caller.origin === "app") {
+    if (caller.origin === "app" || caller.app !== undefined || caller.openId !== undefined) {
       if (!caller.app) return "an app call names no app";
       if (this.#sessions.get(caller.openId ?? "") !== caller.app) return "this app open was not certified by this plugin";
       const entry = manifest.app(served, caller.app);
@@ -307,7 +311,7 @@ export class Server<P extends Plugin = Plugin> {
       if (!(entry.permissions?.tools ?? []).includes(tool.name)) return `${tool.name} is not in this app's permissions`;
     }
     if (tool.readOnly) return undefined;
-    if (caller.origin === "resolve" || caller.origin === "routine") return `${tool.name} changes data, so it does not run here`;
+    if (caller.origin === "resolve" || caller.origin === "routine" || caller.origin === "unknown") return `${tool.name} changes data, so it does not run here`;
     if (caller.routine !== undefined && !manifest.routineWrites(served, caller.routine).includes(tool.name)) {
       return `${tool.name} is not a write this routine declares`;
     }

@@ -7,10 +7,14 @@ plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
 - [ ] **P1 Authorize every resource, not only the app.** The broker has
       checked that the app may call the tool. It has not checked that the caller
       may use _this_ ticket. Look the ticket up in your own store and refuse what
-      you did not issue or what this user may not see. Do this for every call
-      from an open, which is any call with an `open_id`, whatever its `origin`:
-      a write the AI makes on your screen comes as `origin: "agent"` and still
-      has one, and its reads come as `origin: "app"` with a `press` (spec 16.1).
+      you did not issue or what this user may not see. Do this for every call,
+      whatever its `origin`. A call from an open has an `open_id`: a write the AI
+      makes on your screen comes as `origin: "agent"` and still has one, and its
+      reads come as `origin: "app"` with a `press` (spec 16.1). A widget's call
+      (`origin: "widget"`) has no open: the person allowed the widget your
+      source's tools, not a subject, so check its tickets as you do the model's.
+      The SDK's server checks the open of every call that names one, and lets a
+      caller it does not know only read; the tickets are yours to check.
 
   ```js
   function greet(args, caller) {

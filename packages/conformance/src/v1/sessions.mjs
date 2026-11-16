@@ -9,6 +9,7 @@
 // calls, so a check failing here means nothing is sent. Ticket titles,
 // resolve tools and app sources go through the same module because they
 // share its validation of plugin answers.
+import { createHash } from "node:crypto";
 import { isV1 } from "../grammar.mjs";
 import { fromB64u, verify } from "./ed.mjs";
 import { refuse } from "./errors.mjs";
@@ -50,28 +51,53 @@ const keysAre = (o, names) => {
   return keys.length === names.length && names.every((n, i) => keys[i] === n);
 };
 
-/** The press record a call carries to the plugin: what Buwiz Bot allowed, under the signature.
- *  On every call that isn't the person's, reads too: a read goes out as `origin: app`, and this
- *  is how the plugin tells it from the person's own. Only an AI's press, in exactly the protocol's
- *  shape (`PressedBy`). */
+const isHash = (v) => typeof v === "string" && /^sha256:[0-9a-f]{64}$/.test(v);
+
+/** The press record a call carries to the plugin (16.5): what Buwiz Bot allowed, under the
+ *  signature. On every call that isn't the person's, reads too: a read goes out as `origin: app`,
+ *  and this is how the plugin tells it from the person's own. Only an AI's press, in exactly one
+ *  of the two shapes of 16.5; anything else is no record. */
 export function pressOf(actor, press) {
   if (actor === "person" || press === null || typeof press !== "object" || Array.isArray(press)) return undefined;
   const ai = press.by === "ai" && keysAre(press, ["by", "who"]) && isHandle(press.who);
   const approved =
     press.by === "ai_approved" &&
-    keysAre(press, ["approved_by", "by", "once", "who"]) &&
+    keysAre(press, ["approved_by", "args_hash", "at", "by", "once", "shown_hash", "who"]) &&
     isHandle(press.who) &&
     isHandle(press.approved_by) &&
-    isOnce(press.once);
+    isOnce(press.once) &&
+    isHash(press.args_hash) &&
+    isHash(press.shown_hash) &&
+    Number.isSafeInteger(press.at) &&
+    press.at >= 0;
   return ai || approved ? press : undefined;
 }
 
-/** Whether a signed call may reach `tool`: the person's may, and a read. A write for anyone else
- *  needs a tool whose `buwiz/audience` names `agent`, however Buwiz Bot came to send it. */
-export function mayReach(actor, tool) {
+const PRESS_EFFECTS = ["post", "close"];
+const NEVER_PRESSED = ["file", "filing", "submit", "send", "queue", "pay", "paid", "void", "reopen"];
+
+/** Whether `tool` opted in to the AI's press (16.5): `buwiz/press` with `approved: true` and an
+ *  effect of post or close, on a tool whose name has none of the words the AI never presses. */
+export function pressOptedIn(tool) {
+  const opt = tool?._meta?.["buwiz/press"];
+  const words = String(tool?.name ?? "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/);
+  return isObject(opt) && opt.approved === true && PRESS_EFFECTS.includes(opt.effect) && !words.some((w) => NEVER_PRESSED.includes(w));
+}
+
+/** `sha256:` over the JCS bytes of `args`: what a person's yes to a press covers. */
+export const argsHash = (args) => `sha256:${createHash("sha256").update(signedBytes(args)).digest("hex")}`;
+
+/** Whether a signed call with `args` may reach `tool` (16.5): the person's may, and a read. A write
+ *  for anyone else needs a tool whose `buwiz/audience` names `agent`, or one that opted in, with
+ *  the record of the person's yes to these arguments. */
+export function mayReach(actor, tool, press, args) {
   if (originOf(actor, tool) === "app") return true;
   const audience = tool?._meta?.["buwiz/audience"];
-  return Array.isArray(audience) && audience.includes("agent");
+  if (Array.isArray(audience) && audience.includes("agent")) return true;
+  const record = pressOf(actor, press);
+  return pressOptedIn(tool) && record?.by === "ai_approved" && record.args_hash === argsHash(args);
 }
 
 const cap = (s, n) => {
@@ -412,6 +438,8 @@ export function createSessions(plugins) {
       !mayReach(
         envelope.actor,
         rt.tools.find((t) => t.name === envelope.tool),
+        envelope.press,
+        args,
       )
     )
       refuse("permission_denied", `${envelope.tool} is a person's to run`);

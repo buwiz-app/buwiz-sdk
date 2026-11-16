@@ -213,6 +213,22 @@ test("an app reaches only the tools its certified open grants", async () => {
   expect(result(await run.call("toy_list", {}, appCaller("board", 1))).code).toBe("permission_denied");
 });
 
+test("a write the AI makes through an app needs the same open and grant", async () => {
+  const run = new Run();
+  await run.provision();
+  // such a call comes as origin agent, still naming its app and open
+  const ai = (app: string, byte: number) => ({ ...appCaller(app, byte), origin: "agent" });
+  expect(result(await run.call("toy_add", {}, ai("fast", 4))).code).toBe("permission_denied");
+  await run.open("fast", 4);
+  await run.open("board", 1);
+  expect(result(await run.call("toy_add", {}, ai("fast", 4))).added).toBe(true);
+  // the board's open does not grant toy_add
+  expect(result(await run.call("toy_add", {}, ai("board", 1))).code).toBe("permission_denied");
+  // an open named without its app is no open
+  expect(result(await run.call("toy_add", {}, { origin: "agent", open_id: b64u(new Uint8Array(16).fill(4)) })).code).toBe("permission_denied");
+  expect(run.toy.calls).toEqual(["toy_add"]);
+});
+
 test("resolves and routines only read unless the routine declares the write", async () => {
   const run = new Run();
   await run.provision();
@@ -221,7 +237,12 @@ test("resolves and routines only read unless the routine declares the write", as
   expect(result(await run.call("toy_add", {}, { origin: "agent", routine: "tidy" })).added).toBe(true);
   expect(result(await run.call("toy_add", {}, { origin: "agent", routine: "other" })).code).toBe("permission_denied");
   expect(result(await run.call("toy_add", {}, { origin: "agent" })).added).toBe(true);
-  expect(run.toy.calls).toEqual(["toy_add", "toy_add"]);
+  // a caller this library does not know, or none, reads and does not write
+  for (const unknown of [{ origin: "somebody" }, undefined]) {
+    expect(result(await run.call("toy_add", {}, unknown)).code).toBe("permission_denied");
+    expect(result(await run.call("toy_list", {}, unknown)).text).toBe("milk");
+  }
+  expect(run.toy.calls).toEqual(["toy_add", "toy_add", "toy_list", "toy_list"]);
 });
 
 test("tickets resolve to titles and uninstall forgets them", async () => {
@@ -404,6 +425,14 @@ test("a press record reaches the tool, and a malformed one is dropped", async ()
     caller.press = bad;
     expect((await whoami(caller)).press).toBeNull();
   }
+  // `at` is a whole number from 0 to 2^53 - 1, however it is written
+  const at = async (value: unknown) => {
+    caller.press = { ...approved, at: value };
+    return (await whoami(caller)).press?.at ?? null;
+  };
+  expect(await at(JSON.parse("1793000000000.0"))).toBe(1793000000000);
+  expect(await at(9007199254740991)).toBe(9007199254740991);
+  for (const bad of [1.5, -1, 9007199254740992, "1"]) expect(await at(bad)).toBeNull();
 });
 
 test("a widget call carries its origin and name, and an unknown origin is unknown", async () => {

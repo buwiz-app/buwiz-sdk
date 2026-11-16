@@ -77,7 +77,7 @@ pub enum Origin {
     Resolve,
     /// A generated widget, on a tool offered to widgets (spec 16.4).
     Widget,
-    /// No caller: the broker sent none.
+    /// No caller, or an origin this library does not know. It only reads.
     Unknown,
 }
 
@@ -113,11 +113,19 @@ impl Press {
                 once: text("once")?,
                 args_hash: text("args_hash")?,
                 shown_hash: text("shown_hash")?,
-                at: record.get("at").and_then(Value::as_u64)?,
+                at: record.get("at").and_then(safe_integer)?,
             }),
             _ => None,
         }
     }
+}
+
+/// A JSON number that is a whole number from 0 to 2^53 - 1, however it was
+/// written (`5` or `5.0`): what both halves of the SDK take for a time.
+fn safe_integer(value: &Value) -> Option<u64> {
+    const MAX: f64 = 9_007_199_254_740_991.0;
+    let number = value.as_f64()?;
+    (number.fract() == 0.0 && (0.0..=MAX).contains(&number)).then_some(number as u64)
 }
 
 /// The caller of a tool call.
@@ -365,14 +373,17 @@ impl<P: Plugin> Server<P> {
 
     /// The checks every plugin makes before its own tool runs:
     ///
-    /// - an app's call comes from an open this process certified for that
-    ///   app, and names a tool in the app's `permissions.tools`;
-    /// - a resolve and a routine's query only read;
+    /// - a call through an app, the person's or the AI's (any call that
+    ///   names an app or an open, whatever its origin), comes from an open
+    ///   this process certified for that app, and names a tool in the app's
+    ///   `permissions.tools`;
+    /// - a resolve, a routine's query and a caller this library does not
+    ///   know only read;
     /// - a routine's turn only reads, or calls a write its routine declares.
     pub fn authorize(&self, tool: &Tool, caller: &Caller) -> Result<(), String> {
         let name = tool.name;
         let served = self.served.value()?;
-        if caller.origin == Origin::App {
+        if caller.origin == Origin::App || caller.app.is_some() || caller.open_id.is_some() {
             let app = caller.app.as_deref().ok_or("an app call names no app")?;
             let open = caller.open_id.as_deref().unwrap_or("");
             if self.sessions.get(open).map(String::as_str) != Some(app) {
@@ -386,7 +397,10 @@ impl<P: Plugin> Server<P> {
         if tool.read_only {
             return Ok(());
         }
-        if matches!(caller.origin, Origin::Resolve | Origin::Routine) {
+        if matches!(
+            caller.origin,
+            Origin::Resolve | Origin::Routine | Origin::Unknown
+        ) {
             return Err(format!("{name} changes data, so it does not run here"));
         }
         if let Some(routine) = &caller.routine
