@@ -1,0 +1,138 @@
+// buwiz-plugin-test against a minimal plugin built on the SDK's own server: it
+// passes, a copy that breaks one rule fails and the output names that check.
+// No Bot checkout, no network, throwaway keys only.
+
+import { afterAll, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { type Row, RUNNER, SIGNER, keygen, node, probe, probeSays, removeTempDirs, tempDir } from "./support";
+
+afterAll(removeTempDirs);
+
+const MINUTE = 60_000;
+
+test(
+  "the runner passes a minimal known-good plugin",
+  async () => {
+    const key = (await keygen(tempDir())).path;
+    const done = await node(RUNNER, [...probe("--sign-with", key), "--json"]);
+    const res = JSON.parse(done.out) as { ok: boolean; plugin: { id: string }; rows: Row[] };
+    expect(res.plugin.id).toBe("app.buwiz.probe");
+    expect(res.rows.filter((r) => r.status === "fail")).toEqual([]);
+    expect(res.ok).toBe(true);
+    expect(done.code).toBe(0);
+    // the checks that matter most ran, rather than being skipped
+    const passed = new Set(res.rows.filter((r) => r.status === "pass").map((r) => r.id));
+    for (const id of [
+      "MAN-01",
+      "MAN-02",
+      "MAN-10",
+      "APP-01",
+      "APP-02",
+      "APP-03",
+      "APP-04",
+      "RSV-01",
+      "RSV-03",
+      "RSV-05",
+      "LCY-01",
+      "BRG-03",
+      "BRG-04",
+      "BRG-06",
+      "INV-04",
+      "RSV-04",
+    ]) {
+      expect(passed.has(id), id).toBe(true);
+    }
+  },
+  MINUTE,
+);
+
+test(
+  "the checklist ends with a summary line and exits 0",
+  async () => {
+    const key = (await keygen(tempDir())).path;
+    const done = await node(RUNNER, probe("--sign-with", key));
+    expect(done.code).toBe(0);
+    expect(done.out).toMatch(/^Buwiz Mini App Protocol 1\.0, plugin checks: app\.buwiz\.probe 0\.1\.0$/m);
+    expect(done.out.trimEnd().split("\n").pop()).toMatch(/^\d+ pass, 0 fail, 0 skipped: conforms$/);
+  },
+  MINUTE,
+);
+
+test(
+  "the runner fails a plugin that breaks a rule, and names the check",
+  async () => {
+    const key = (await keygen(tempDir())).path;
+    const done = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_BREAK=fetch")]);
+    expect(done.code).toBe(1);
+    expect(done.out).toContain("[ ] APP-04 FAIL");
+    expect(done.out).toContain("uses fetch");
+    expect(done.out.trimEnd().split("\n").pop()).toMatch(/^\d+ pass, 1 fail, 0 skipped: does NOT conform$/);
+
+    const json = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_BREAK=fetch"), "--json"]);
+    const failed = (JSON.parse(json.out) as { rows: Row[] }).rows.filter((r) => r.status === "fail");
+    expect(failed.map((r) => r.id)).toEqual(["APP-04"]);
+  },
+  MINUTE,
+);
+
+test(
+  "a manifest signed by the signer is trusted from --key-file, or from BUWIZ_TRUST_FILE",
+  async () => {
+    const dir = tempDir();
+    const key = await keygen(dir);
+    const keyId = "probe-test-01";
+    // the same steps a template's conformance.sh takes: manifest under the test key id, app source, sign
+    writeFileSync(join(dir, "manifest.json"), await probeSays(["manifest", "--key-id", keyId]));
+    writeFileSync(join(dir, "board.tsx"), await probeSays(["app-source", "board"]));
+    const signed = join(dir, "signed.json");
+    const sign = await node(SIGNER, [join(dir, "manifest.json"), "--key-file", key.path, "--app", `board=${join(dir, "board.tsx")}`, "--out", signed]);
+    expect(sign.code).toBe(0);
+
+    const withKey = await node(RUNNER, probe("--manifest", signed, "--key-file", key.path));
+    expect(withKey.out.trimEnd().split("\n").pop()).toMatch(/ 0 fail, 0 skipped: conforms$/);
+    expect(withKey.out).toContain("from --key-file");
+
+    // the Bot's way: a trust file, named by BUWIZ_TRUST_FILE, used as it is
+    const trust = (approved: object[]) =>
+      JSON.stringify({ v: 1, publishers: { [keyId]: { publisher: "app.buwiz", alg: "ed25519", public_key: key.pub } }, approved_plugins: approved });
+    writeFileSync(join(dir, "trust.json"), trust([{ id: "app.buwiz.probe", publisher_key_id: keyId }]));
+    const trusted = await node(RUNNER, probe("--manifest", signed), { BUWIZ_TRUST_FILE: join(dir, "trust.json") });
+    expect(trusted.out.trimEnd().split("\n").pop()).toMatch(/ 0 fail, 0 skipped: conforms$/);
+    expect(trusted.out).toContain("trust: BUWIZ_TRUST_FILE");
+    expect(trusted.out).toContain("app.buwiz.probe approved");
+
+    // the key is trusted but the plugin is not approved: MAN-01 fails with the broker's message
+    writeFileSync(join(dir, "unapproved.json"), trust([]));
+    const refused = await node(RUNNER, probe("--manifest", signed), { BUWIZ_TRUST_FILE: join(dir, "unapproved.json") });
+    expect(refused.code).toBe(1);
+    expect(refused.out).toContain("[ ] MAN-01 FAIL");
+  },
+  MINUTE,
+);
+
+test(
+  "--manifest with neither --key-file nor BUWIZ_TRUST_FILE stops: the SDK ships no trust list",
+  async () => {
+    const dir = tempDir();
+    const key = await keygen(dir);
+    writeFileSync(join(dir, "manifest.json"), await probeSays(["manifest", "--key-id", "probe-test-01"]));
+    const signed = join(dir, "signed.json");
+    await node(SIGNER, [join(dir, "manifest.json"), "--key-file", key.path, "--out", signed]);
+    const done = await node(RUNNER, probe("--manifest", signed));
+    expect(done.code).toBe(1);
+    expect(done.out).toContain("BUWIZ_TRUST_FILE");
+    expect(done.out).toContain("does NOT conform");
+  },
+  MINUTE,
+);
+
+test(
+  "usage errors exit 2 without running anything",
+  async () => {
+    const done = await node(RUNNER, ["--no-such-option"]);
+    expect(done.code).toBe(2);
+    expect(done.err).toContain("unknown option --no-such-option");
+  },
+  MINUTE,
+);
