@@ -1306,8 +1306,8 @@ on a routine that needs consent (section 19.3).
 It can drive a full-screen app's screen, but only by a named button or a named field: it cannot press an unnamed
 element, a position on the screen, a key or the footer buttons of an inline card. What its press calls reaches a
 plugin as section 16.5 says: a read passes, a write only if the tool is open to agents or opted in and the person said
-yes to that call; a tool whose name says file, submit, send, queue, pay, void or reopen cannot opt in. It cannot
-press a button of the Bot itself.
+yes to that call; a tool whose name has one of the words section 16.5 lists (filing, sending, paying and the
+like) cannot opt in. It cannot press a button of the Bot itself.
 
 ## 19. Routines
 
