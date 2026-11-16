@@ -5,6 +5,9 @@
   "description": "The Buwiz Bot mini app SDK: the plugin half in TypeScript (packages/plugin) and the bridge types for TSX apps (packages/app)",
   "license": "Apache-2.0",
   "repository": "github:buwiz-app/buwiz-sdk",
+  "workspaces": [
+    "packages/conformance"
+  ],
   "files": [
     "packages",
     "vectors"
@@ -15,6 +18,8 @@
     "./app": "./packages/app/buwiz.d.ts"
   },
   "scripts": {
+    "buwiz-plugin-test": "node --disable-warning=ExperimentalWarning packages/conformance/bin/buwiz-plugin-test.mjs",
+    "buwiz-sign-manifest": "node packages/conformance/src/v1/sign-manifest.mjs",
     "check": "oxlint && oxfmt --check && tsc --noEmit",
     "fmt": "oxfmt",
     "test": "bun test"

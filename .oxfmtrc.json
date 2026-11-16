@@ -1,4 +1,11 @@
 {
   "printWidth": 160,
-  "ignorePatterns": ["vectors/**", "target/**"]
+  "ignorePatterns": [
+    "vectors/**",
+    "target/**",
+    "packages/conformance/bin/**",
+    "packages/conformance/lib/**",
+    "packages/conformance/src/**",
+    "packages/conformance/template/**"
+  ]
 }
