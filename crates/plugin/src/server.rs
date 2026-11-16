@@ -75,8 +75,57 @@ pub enum Origin {
     Routine,
     /// A command's or scope's resolve.
     Resolve,
-    /// No caller: the broker sent none.
+    /// A generated widget, on a tool offered to widgets (spec 16.4).
+    Widget,
+    /// No caller, or an origin this library does not know. It only reads.
     Unknown,
+}
+
+/// The record of an AI's press: `_meta["buwiz/caller"].press` (spec 16.5).
+/// Only the host sets it, on a call the person did not make.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Press {
+    /// The AI made a read, or a call that needed no yes.
+    Ai { who: String },
+    /// The AI made the call after the person said yes to it.
+    AiApproved {
+        who: String,
+        approved_by: String,
+        /// The one-time id of the press.
+        once: String,
+        /// `sha256:` and 64 hex digits over the JCS bytes of the call's args.
+        args_hash: String,
+        /// The same over the card the person saw.
+        shown_hash: String,
+        /// When the person said yes, in unix ms.
+        at: u64,
+    },
+}
+
+impl Press {
+    fn of(record: &Value) -> Option<Self> {
+        let text = |key: &str| record.get(key).and_then(Value::as_str).map(str::to_string);
+        match record.get("by").and_then(Value::as_str)? {
+            "ai" => Some(Self::Ai { who: text("who")? }),
+            "ai_approved" => Some(Self::AiApproved {
+                who: text("who")?,
+                approved_by: text("approved_by")?,
+                once: text("once")?,
+                args_hash: text("args_hash")?,
+                shown_hash: text("shown_hash")?,
+                at: record.get("at").and_then(safe_integer)?,
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// A JSON number that is a whole number from 0 to 2^53 - 1, however it was
+/// written (`5` or `5.0`): what both halves of the SDK take for a time.
+fn safe_integer(value: &Value) -> Option<u64> {
+    const MAX: f64 = 9_007_199_254_740_991.0;
+    let number = value.as_f64()?;
+    (number.fract() == 0.0 && (0.0..=MAX).contains(&number)).then_some(number as u64)
 }
 
 /// The caller of a tool call.
@@ -89,6 +138,12 @@ pub struct Caller {
     pub open_id: Option<String>,
     /// The routine whose turn or query this is.
     pub routine: Option<String>,
+    /// The widget's name (`R37`), for [`Origin::Widget`].
+    pub widget: Option<String>,
+    /// The record of the AI's press, when the AI made the call (spec 16.5).
+    /// An `Origin::App` call that has one is a read the AI made, not the
+    /// person's act.
+    pub press: Option<Press>,
     /// The accounts the host has pushed (in memory; `Debug` hides tokens).
     /// Private: a tool reads one through [`Caller::account`], and only the
     /// host's pushes change them.
@@ -112,6 +167,7 @@ impl Caller {
             Some("agent") => Origin::Agent,
             Some("routine") => Origin::Routine,
             Some("resolve") => Origin::Resolve,
+            Some("widget") => Origin::Widget,
             _ => Origin::Unknown,
         };
         Self {
@@ -119,6 +175,8 @@ impl Caller {
             app: text("app"),
             open_id: text("open_id"),
             routine: text("routine"),
+            widget: text("widget"),
+            press: caller.and_then(|c| c.get("press")).and_then(Press::of),
             accounts: Accounts::default(),
         }
     }
@@ -315,14 +373,17 @@ impl<P: Plugin> Server<P> {
 
     /// The checks every plugin makes before its own tool runs:
     ///
-    /// - an app's call comes from an open this process certified for that
-    ///   app, and names a tool in the app's `permissions.tools`;
-    /// - a resolve and a routine's query only read;
+    /// - a call through an app, the person's or the AI's (any call that
+    ///   names an app or an open, whatever its origin), comes from an open
+    ///   this process certified for that app, and names a tool in the app's
+    ///   `permissions.tools`;
+    /// - a resolve, a routine's query and a caller this library does not
+    ///   know only read;
     /// - a routine's turn only reads, or calls a write its routine declares.
     pub fn authorize(&self, tool: &Tool, caller: &Caller) -> Result<(), String> {
         let name = tool.name;
         let served = self.served.value()?;
-        if caller.origin == Origin::App {
+        if caller.origin == Origin::App || caller.app.is_some() || caller.open_id.is_some() {
             let app = caller.app.as_deref().ok_or("an app call names no app")?;
             let open = caller.open_id.as_deref().unwrap_or("");
             if self.sessions.get(open).map(String::as_str) != Some(app) {
@@ -336,7 +397,10 @@ impl<P: Plugin> Server<P> {
         if tool.read_only {
             return Ok(());
         }
-        if matches!(caller.origin, Origin::Resolve | Origin::Routine) {
+        if matches!(
+            caller.origin,
+            Origin::Resolve | Origin::Routine | Origin::Unknown
+        ) {
             return Err(format!("{name} changes data, so it does not run here"));
         }
         if let Some(routine) = &caller.routine

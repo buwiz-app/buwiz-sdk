@@ -123,6 +123,12 @@ bare command, where a starter flow answers) and `sdk-probe` to resolve
 tools. Keep side effects behind explicit arguments (P5) and these calls are
 harmless.
 
+Every call the runner signs is the person's (`actor: "person"`). It does not send the
+AI's press (`actor: "agent"`, `press`, `buwiz/press` opt-in, spec 16.5), so it does not
+check how your plugin handles a press record or refuses a write that is not the person's.
+Nor does it call a tool as a generated widget (`origin: "widget"`, spec 16.4). Test those
+with your own calls to the tool, carrying the `_meta["buwiz/caller"]` of spec 16.1.
+
 Not checked here: everything only Buwiz Bot can show (consent, the sandbox, storage,
 placement; the host rows of Appendix C.2 to C.8), MAN-09 (it needs other installs),
 and the review items of [security.md](security.md).

@@ -5,7 +5,7 @@
 use buwiz_plugin::key::PluginKey;
 use buwiz_plugin::manifest::{self, Served};
 use buwiz_plugin::{
-    Args, Caller, Plugin, Server, Tickets, Tool, account_required, b64, fail, jcs, ok,
+    Args, Caller, Plugin, Press, Server, Tickets, Tool, account_required, b64, fail, jcs, ok,
 };
 use serde_json::{Value, json};
 
@@ -78,6 +78,27 @@ impl Plugin for Toy {
 
     fn call(&mut self, tool: &str, args: &Args, caller: &Caller) -> Value {
         self.calls.push(tool.to_string());
+        if args.contains_key("whoami") {
+            // what the caller says of itself, as plain JSON
+            let press = match &caller.press {
+                None => json!(null),
+                Some(Press::Ai { who }) => json!({ "by": "ai", "who": who }),
+                Some(Press::AiApproved {
+                    who,
+                    approved_by,
+                    once,
+                    args_hash,
+                    shown_hash,
+                    at,
+                }) => json!({
+                    "by": "ai_approved", "who": who, "approved_by": approved_by, "once": once,
+                    "args_hash": args_hash, "shown_hash": shown_hash, "at": at,
+                }),
+            };
+            return ok(
+                json!({ "origin": format!("{:?}", caller.origin).to_lowercase(), "widget": caller.widget, "press": press }),
+            );
+        }
         if let Some(account) = args.get("needs").and_then(Value::as_str) {
             // a tool that reads with a pushed token answers its subject, never the token
             return match caller.account(account) {
@@ -282,6 +303,32 @@ fn an_app_reaches_only_the_tools_its_certified_open_grants() {
 }
 
 #[test]
+fn a_write_the_ai_makes_through_an_app_needs_the_same_open_and_grant() {
+    let mut run = Run::new();
+    run.provision();
+    // such a call comes as origin agent, still naming its app and open
+    let ai = |app: &str, open_byte: u8| {
+        let mut caller = app_caller(app, open_byte);
+        caller["origin"] = json!("agent");
+        caller
+    };
+    let no_open = run.call("toy_add", json!({}), ai("fast", 4));
+    assert_eq!(result(&no_open)["code"], "permission_denied");
+    run.open("fast", 4);
+    run.open("board", 1);
+    let granted = run.call("toy_add", json!({}), ai("fast", 4));
+    assert_eq!(result(&granted)["added"], true);
+    // the board's open does not grant toy_add
+    let not_granted = run.call("toy_add", json!({}), ai("board", 1));
+    assert_eq!(result(&not_granted)["code"], "permission_denied");
+    // an open named without its app is no open
+    let no_app = json!({ "origin": "agent", "open_id": b64::encode(&[4; 16]) });
+    let refused = run.call("toy_add", json!({}), no_app);
+    assert_eq!(result(&refused)["code"], "permission_denied");
+    assert_eq!(run.server.plugin().calls, ["toy_add"]);
+}
+
+#[test]
 fn resolves_and_routines_only_read_unless_the_routine_declares_the_write() {
     let mut run = Run::new();
     run.provision();
@@ -307,7 +354,17 @@ fn resolves_and_routines_only_read_unless_the_routine_declares_the_write() {
     assert_eq!(result(&undeclared)["code"], "permission_denied");
     let agent = run.call("toy_add", json!({}), json!({ "origin": "agent" }));
     assert_eq!(result(&agent)["added"], true);
-    assert_eq!(run.server.plugin().calls, ["toy_add", "toy_add"]);
+    // a caller this library does not know, or none, reads and does not write
+    for unknown in [json!({ "origin": "somebody" }), json!(null)] {
+        let write = run.call("toy_add", json!({}), unknown.clone());
+        assert_eq!(result(&write)["code"], "permission_denied");
+        let read = run.call("toy_list", json!({}), unknown);
+        assert_eq!(result(&read)["text"], "milk");
+    }
+    assert_eq!(
+        run.server.plugin().calls,
+        ["toy_add", "toy_add", "toy_list", "toy_list"]
+    );
 }
 
 #[test]
@@ -506,4 +563,88 @@ fn the_local_manifest_check_finds_the_usual_mistakes() {
             "apps[0].permissions.tools names toy_gone, which is not a tool",
         ]
     );
+}
+
+const HASH: &str = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+#[test]
+fn a_press_record_reaches_the_tool_and_a_malformed_one_is_dropped() {
+    let mut run = Run::new();
+    run.provision();
+    let whoami = |run: &mut Run, caller: Value| {
+        let reply = run.call("toy_list", json!({ "whoami": true }), caller);
+        result(&reply).clone()
+    };
+    let mut caller = app_caller("board", 1);
+    run.open("board", 1);
+    // the person's own call has no press
+    let person = whoami(&mut run, caller.clone());
+    assert_eq!(person["origin"], "app");
+    assert_eq!(person["press"], json!(null));
+    // a read the AI made: origin app, with its record
+    caller["press"] = json!({ "by": "ai", "who": "agent.example" });
+    let read = whoami(&mut run, caller.clone());
+    assert_eq!(read["origin"], "app");
+    assert_eq!(read["press"], json!({ "by": "ai", "who": "agent.example" }));
+    // a write the AI made after the person's yes
+    let approved = json!({
+        "by": "ai_approved", "who": "agent.example", "approved_by": "person.example",
+        "once": "press-0123456789abcdef", "args_hash": HASH, "shown_hash": HASH, "at": 1793000000000_u64,
+    });
+    caller["origin"] = json!("agent");
+    caller["press"] = approved.clone();
+    let write = whoami(&mut run, caller.clone());
+    assert_eq!(write["origin"], "agent");
+    assert_eq!(write["press"], approved);
+    // anything else is no record
+    for bad in [
+        json!("ai"),
+        json!({ "by": "person", "who": "person.example" }),
+        json!({ "by": "ai" }),
+        json!({ "by": "ai_approved", "who": "agent.example" }),
+    ] {
+        caller["press"] = bad;
+        assert_eq!(whoami(&mut run, caller.clone())["press"], json!(null));
+    }
+    // `at` is a whole number from 0 to 2^53 - 1, however it is written
+    let at = |run: &mut Run, at: Value| {
+        let mut caller = caller.clone();
+        caller["press"] = approved.clone();
+        caller["press"]["at"] = at;
+        whoami(run, caller)["press"]["at"].clone()
+    };
+    assert_eq!(
+        at(&mut run, json!(1793000000000.0)),
+        json!(1793000000000_u64)
+    );
+    assert_eq!(
+        at(&mut run, json!(9007199254740991_u64)),
+        json!(9007199254740991_u64)
+    );
+    for bad in [
+        json!(1.5),
+        json!(-1),
+        json!(9007199254740992_u64),
+        json!("1"),
+    ] {
+        assert_eq!(at(&mut run, bad), json!(null));
+    }
+}
+
+#[test]
+fn a_widget_call_carries_its_origin_and_name_and_an_unknown_origin_is_unknown() {
+    let mut run = Run::new();
+    run.provision();
+    let widget = json!({ "origin": "widget", "plugin": Toy::ID, "widget": "R37", "ts": 1 });
+    let who = run.call("toy_list", json!({ "whoami": true }), widget.clone());
+    assert_eq!(result(&who)["origin"], "widget");
+    assert_eq!(result(&who)["widget"], "R37");
+    // a widget the person allowed to write reaches a write tool
+    let added = run.call("toy_add", json!({}), widget);
+    assert_eq!(result(&added)["added"], true);
+    // an origin this library does not know is not a crash
+    let other = json!({ "origin": "somebody", "plugin": Toy::ID, "ts": 1 });
+    let who = run.call("toy_list", json!({ "whoami": true }), other);
+    assert_eq!(result(&who)["origin"], "unknown");
+    assert_eq!(result(&who)["widget"], json!(null));
 }

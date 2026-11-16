@@ -922,12 +922,12 @@ Each call is checked whatever the placement (a bad one rejects `invalid_args` an
 open then ignores it. After the open ends each rejects `closed`. They do not count against `buwiz.call`'s
 limits.
 
-| Call                      | Rule                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `buwiz.actions(list)`     | At most 3 objects `{id, label, primary?, disabled?}`, no other key. `id`: 1 to 64 of `[A-Za-z0-9_.:-]`, unique. `label`: trimmed, 1 to 24 characters, one line (no control characters). At most one `primary`. `[]` removes the footer; each call replaces it. Drawn as pill buttons under the app, right-aligned, the primary first.     |
-| `buwiz.onAction(handler)` | A press of an enabled button in the current list calls every handler with its `id`. Returns a function that removes the handler. A handler that is not a function throws `invalid_args`. The press does nothing else; the app does the work with its own tools. Nothing is delivered after the open ends. The model cannot press buttons. |
-| `buwiz.meta(meta)`        | `{text, pill?}`, no other key, or `null` to remove. `text`: trimmed, 1 to 32 characters, one line. Dim text after the title, or a pill.                                                                                                                                                                                                   |
-| `buwiz.settle(text)`      | `text`: trimmed, 1 to 120 characters, one line. The card collapses to one dim line reading `text`; the app unmounts and its session closes. No undo; a new open is a new card.                                                                                                                                                            |
+| Call                      | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `buwiz.actions(list)`     | At most 3 objects `{id, label, primary?, disabled?}`, no other key. `id`: 1 to 64 of `[A-Za-z0-9_.:-]`, unique. `label`: trimmed, 1 to 24 characters, one line (no control characters). At most one `primary`. `[]` removes the footer; each call replaces it. Drawn as pill buttons under the app, right-aligned, the primary first.                                                                                                   |
+| `buwiz.onAction(handler)` | A press of an enabled button in the current list calls every handler with its `id`. Returns a function that removes the handler. A handler that is not a function throws `invalid_args`. The press does nothing else; the app does the work with its own tools. Nothing is delivered after the open ends. The AI does not press these buttons: its presses reach only the named buttons and fields of a full-screen app (section 16.5). |
+| `buwiz.meta(meta)`        | `{text, pill?}`, no other key, or `null` to remove. `text`: trimmed, 1 to 32 characters, one line. Dim text after the title, or a pill.                                                                                                                                                                                                                                                                                                 |
+| `buwiz.settle(text)`      | `text`: trimmed, 1 to 120 characters, one line. The card collapses to one dim line reading `text`; the app unmounts and its session closes. No undo; a new open is a new card.                                                                                                                                                                                                                                                          |
 
 ### 13.7 Events
 
@@ -949,10 +949,16 @@ For every `buwiz.call` and `buwiz.preview` the host builds, in native code:
   "open_id": "<b64url, 16 bytes>",
   "tool": "notes_list",
   "args": { "folder": "work" },
+  "actor": "person",
   "ts": 1793000000000,
   "nonce": "<b64url, 16 bytes>"
 }
 ```
+
+`actor` says who made the call: `"person"` for the person's own act, `"agent"` for a call the AI made while it drives
+the app's screen. The broker treats any other value, or none, as `"agent"`. When the actor is the AI, the host MUST add
+`press`, the record of that press (section 16.5), and MUST NOT add one to the person's call. The host's own native code sets both under the signature; an app
+passes the bridge a tool and its arguments and nothing else, and a plugin never sets them.
 
 A preview adds `"purpose": "preview"`; no other `purpose` exists. `sig = Ed25519Sign(session key,
 JCS(envelope))`. The host's broker receives `{envelope, sig}`; the session key's private half never leaves the
@@ -977,8 +983,9 @@ JCS-signable, is `invalid_args`.
 
 Then: a `purpose` other than `"preview"` is `invalid_args`, and `"preview"` from an app without
 `permissions.preview` is `permission_denied`; `args` MUST be an object of at most 256 KiB (`invalid_args`); the
-tool MUST be in the plugin's current `tools/list` (`not_found`); the rate and concurrency limits of section
-13.2 apply. Only then does the broker call the tool, with `_meta["buwiz/caller"]` (section 16.1). Its answer is
+tool MUST be in the plugin's current `tools/list` (`not_found`); a call whose actor is not the person reaches a
+tool that is not read-only only as section 16.5 says (`permission_denied`); the rate and concurrency limits of
+section 13.2 apply. Only then does the broker call the tool, with `_meta["buwiz/caller"]` (section 16.1). Its answer is
 checked as section 13.2, with the preview's `max_bytes` in place of 1 MiB for a preview.
 
 ### 14.3 Replay and clock
@@ -1075,14 +1082,25 @@ id, app id, ticket?, placement}` and open the app's current version. Both go on 
 
 Every `tools/call` to a plugin tool carries `_meta["buwiz/caller"]`:
 
-| `origin`    | Who               | Fields                                                                                                                        |
-| ----------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `"app"`     | A bridge call     | `plugin`, `app`, `open_id`, `ts`                                                                                              |
-| `"agent"`   | The model         | `plugin`, `ts`; in a routine's turn calling the routine's own plugin also `routine`, and `instance` and `params` (section 19) |
-| `"routine"` | A routine's query | `plugin`, `ts`, `routine`, `instance`, `params`                                                                               |
-| `"resolve"` | A resolve tool    | `plugin`, `ts`                                                                                                                |
+| `origin`    | Who                                      | Fields                                                                                                                                                                          |
+| ----------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"app"`     | A bridge call: the person's, or any read | `plugin`, `app`, `open_id`, `ts`; `press` when the AI made the call                                                                                                             |
+| `"agent"`   | The model; a bridge write the AI made    | `plugin`, `ts`; in a routine's turn calling the routine's own plugin also `routine`, and `instance` and `params` (section 19); a bridge write also `app`, `open_id` and `press` |
+| `"routine"` | A routine's query                        | `plugin`, `ts`, `routine`, `instance`, `params`                                                                                                                                 |
+| `"resolve"` | A resolve tool                           | `plugin`, `ts`                                                                                                                                                                  |
+| `"widget"`  | A generated widget (section 16.4)        | `plugin`, `widget`, `ts`                                                                                                                                                        |
 
 `ts` is unix ms. The plugin uses it to authorize (section 23.2). The host never shows it to the model.
+
+For a bridge call the host takes `origin` from the envelope's `actor` and the tool's definition (section 14.1): it is
+`"app"` when the actor is `"person"` or the tool has `annotations.readOnlyHint: true`, and `"agent"` otherwise. A tool
+without `readOnlyHint: true` counts as a write. A read is `"app"` whoever made it, so an app's screen keeps reading
+while the AI drives it. A call with `origin: "app"` and a `press` is such a read: the AI made it, not the person. A
+tool marked read-only MUST change nothing (P8).
+
+`press` is present on a bridge call the AI made, reads included, and absent on the person's calls. It is the record
+of section 16.5, and the plugin MAY read it. The host sets `origin` and `press` itself; no plugin or app can claim
+either.
 
 ### 16.2 `buwiz/open` (plugin to host)
 
@@ -1119,30 +1137,134 @@ and `prompt` (trimmed), cut to 40 and 200 characters, and shows them as chips un
 
 ### 16.4 `buwiz/audience` (plugin, in `tools/list`)
 
-A tool definition's `_meta["buwiz/audience"]` is an array of audiences. A tool whose array leaves out
-`"agent"` (for example `["app"]`) serves apps only: it is not on the model's surface and model calls of it are
-refused. Absent means everyone.
+A tool definition's `_meta["buwiz/audience"]` is an array of audience words. `"agent"` and `"widget"` are the words
+this section defines; other words (for example `"app"`) mean nothing to the host and are ignored. The host reads
+the array in three places:
 
-### 16.5 Stripping
+- The model's surface (section 18.2). An array that leaves out `"agent"` (for example `["app"]`) keeps the tool off the
+  surface, and model calls of it are refused. An absent audience, or one that is not an array, leaves the tool on the
+  surface.
+- An AI's press through an app's screen (section 16.5). A write is open to agents only when the array contains
+  `"agent"`. An absent audience is not open.
+- Generated widgets (below). A tool is offered to widgets only when the array contains `"widget"`. An absent audience
+  is not offered.
+
+A plugin MUST write the audience as an array: the host reads any other value (for example the string `"app"`) as
+absent, which leaves the tool on the model's surface. A tool that wants the model, or the AI's press, or widgets,
+lists that word explicitly. An app's own calls (the
+person's) do not depend on the audience.
+
+**Widgets.** A generated widget is a small program the Bot's model writes into a chat. It reads and changes data
+through sources; a plugin offers tools to widgets by marking them `"widget"`:
+
+- The source is named by the manifest's `short`, and a widget's action is the tool's name without `<short>_`. A tool
+  whose name does not start with `<short>_`, a reserved tool and a tool the person switched off are not offered. The
+  plugin MUST be enabled, approved and running, and its `short` MUST NOT be the name of a source the host has built in.
+- The person answers a permission card for each widget and source: read, read and write, or no. A tool counts as a
+  write unless its `annotations.readOnlyHint` is `true`; an answer of read refuses writes. An answer covers the
+  actions the source had when it was asked, so an action added later asks again. Nothing reaches the plugin before
+  the person answers.
+- The call reaches the tool with `_meta["buwiz/caller"]` `{origin: "widget", plugin, widget, ts}`. `widget` is the
+  widget's name, `R` and digits (for example `R37`). The call has no `app`, `open_id` or `press`.
+- The person's answer covers the source's tools, not a subject. A tool offered to widgets MUST check every ticket
+  or identifier argument as it does for the model (P1), and SHOULD take none it would not give the model.
+- The arguments are an object of at most 256 KiB. The call has the 120 s limit of section 22.2. A result over 1 MiB
+  and an `isError` result are errors to the widget. Otherwise the widget receives the result's `structuredContent`, or
+  when it has none the first text block.
+- A read-only tool whose audience holds both `"widget"` and `"agent"` can be read by the model through a source; that call arrives
+  as `origin: "agent"`, without `app` or `open_id`. A tool offered only to widgets is not.
+
+### 16.5 `buwiz/press` (plugin, in `tools/list`)
+
+The AI can drive a full-screen app's screen: it presses a named button or fills a named field, and the app's code
+calls tools. Such a call is signed with `actor: "agent"` (section 14.1). A tool that is not read-only receives it
+only when one of these holds; otherwise the broker answers `permission_denied` and sends nothing:
+
+- The tool is open to agents: its `_meta["buwiz/audience"]` contains `"agent"` (section 16.4).
+- The tool opted in with `_meta["buwiz/press"]` and the person said yes to that exact call.
+
+A read (`annotations.readOnlyHint: true`) always passes.
+
+A tool opts in with:
+
+```json
+"_meta": { "buwiz/press": { "approved": true, "effect": "post", "describe": "notes_describe" } }
+```
+
+| Field      | Rule                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| `approved` | MUST be the boolean `true`.                                                                             |
+| `effect`   | `"post"` or `"close"`. Any other value, or none, is no opt-in.                                          |
+| `describe` | The name of a read-only tool of this plugin that puts the call in plain words (below). MUST be present. |
+
+A tool whose name contains one of the words `file`, `filing`, `submit`, `send`, `queue`, `pay`, `paid`, `void` or
+`reopen` can never opt in, whatever it declares: the AI never presses these. The words of a name are the runs of
+letters and digits in its lowercase form (`ledger_pay_run` has `pay`; `sendmail` has none). The name rule is a
+backstop that matches whole words only (`payment` is not `pay`); it is not the guard. A plugin MUST NOT opt in a
+tool that files, submits, sends, pays, voids or reopens, whatever the tool is called (P5).
+
+**The card.** The host holds the call unsent and reads `describe` with the arguments `{tool, args}` of the held call.
+The `describe` tool MUST be read-only and in the app's `permissions.tools`, and answers `structuredContent`
+`{title, lines}`:
+
+- `title`: text of 1 to 120 characters.
+- `lines`: 1 to 80 texts of 1 to 400 characters each.
+- Neither holds a ticket (`tkt_…`), a control character or an invisible formatting character.
+
+The answer MUST say what the call will do with its real values and cover every argument the call uses; a `describe`
+that cannot show an argument MUST refuse it. The host shows the person the card with Not now and Allow, reads
+`describe` again after Allow and sends the call only if the answer is unchanged. Only the person's own press of Allow
+lets it go. A call with no usable card, a card nobody answers, or a screen that changes while the card is up is not
+sent. One card is open at a time; a second press meanwhile is refused.
+
+**The press record.** `_meta["buwiz/caller"].press` (section 16.1) is one of:
+
+| `by`            | When                                                                       | Fields                                                              |
+| --------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `"ai"`          | The AI made a read, or a call to a tool open to agents that needed no yes. | `by`, `who`                                                         |
+| `"ai_approved"` | The AI made the call after the person said yes to it.                      | `by`, `who`, `approved_by`, `once`, `args_hash`, `shown_hash`, `at` |
+
+```json
+{
+  "by": "ai_approved",
+  "who": "agent.example",
+  "approved_by": "person.example",
+  "once": "press-0123456789abcdef",
+  "args_hash": "sha256:<64 lowercase hex>",
+  "shown_hash": "sha256:<64 lowercase hex>",
+  "at": 1793000000000
+}
+```
+
+`who` names the AI, `approved_by` the person who said yes, and `once` is the one-time id of that press. `args_hash` is
+`sha256:` over the JCS bytes of the call's `args` (section 5.2), what the person's yes covers; `shown_hash` is the same
+over the card they saw; `at` is unix ms. The host sends an opted-in call only with an `ai_approved` record whose
+`args_hash` matches the arguments it sends. A plugin that wants to check again hashes `args` the same way. A tool open
+to agents can also receive `ai_approved` when the person has set the host to ask first. A record of any other shape is
+dropped, and `press` is absent. The `describe` read arrives as a read with `{by: "ai"}`.
+
+### 16.6 Stripping
 
 The host strips `_meta` from every tool result before the model or an app sees it.
 
 ## 17. Consent
 
-| Trigger                                                                                          | Consent                                                                                            |
-| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| A `buwiz://app/…` link from the OS or a web page                                                 | A dialog every time: "Open <app title> from <source>?"                                             |
-| A tool result's `buwiz/open`, full placement                                                     | A card with Open; nothing opens until pressed.                                                     |
-| A tool result's `buwiz/open`, inline placement                                                   | A card with Show; nothing mounts until pressed. A first-party plugin's answer card mounts at once. |
-| A resolve `open` from the agent or a routine                                                     | As a tool result.                                                                                  |
-| A click on an attachment or a pin                                                                | None.                                                                                              |
-| A command or token the person typed, resolving to `open`                                         | None.                                                                                              |
-| A command resolving to `prompt`                                                                  | None: nothing is sent.                                                                             |
-| `buwiz.open({app})`                                                                              | None.                                                                                              |
-| `buwiz.open({url})`, or an `https` URL in a resolve or tool result                               | A dialog every time: "Open <URL> in your browser?"                                                 |
-| Any other scheme in plugin output (`http`, `mailto`, `tel`, `file`, `buwiz://` other than `app`) | Refused; never opened.                                                                             |
-| `buwiz.attach`                                                                                   | A dialog: "Attach <title> to this chat?"                                                           |
-| `buwiz.pickFile`                                                                                 | The native file dialog is the consent.                                                             |
+| Trigger                                                                                          | Consent                                                                                               |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| A `buwiz://app/…` link from the OS or a web page                                                 | A dialog every time: "Open <app title> from <source>?"                                                |
+| A tool result's `buwiz/open`, full placement                                                     | A card with Open; nothing opens until pressed.                                                        |
+| A tool result's `buwiz/open`, inline placement                                                   | A card with Show; nothing mounts until pressed. A first-party plugin's answer card mounts at once.    |
+| A resolve `open` from the agent or a routine                                                     | As a tool result.                                                                                     |
+| A click on an attachment or a pin                                                                | None.                                                                                                 |
+| A command or token the person typed, resolving to `open`                                         | None.                                                                                                 |
+| A command resolving to `prompt`                                                                  | None: nothing is sent.                                                                                |
+| `buwiz.open({app})`                                                                              | None.                                                                                                 |
+| `buwiz.open({url})`, or an `https` URL in a resolve or tool result                               | A dialog every time: "Open <URL> in your browser?"                                                    |
+| Any other scheme in plugin output (`http`, `mailto`, `tel`, `file`, `buwiz://` other than `app`) | Refused; never opened.                                                                                |
+| `buwiz.attach`                                                                                   | A dialog: "Attach <title> to this chat?"                                                              |
+| `buwiz.pickFile`                                                                                 | The native file dialog is the consent.                                                                |
+| A generated widget's first use of a source's tools                                               | A card per widget and source with read and write as separate answers; nothing is sent until answered. |
+| The AI's press of a tool that opted in with `buwiz/press`                                        | A card with Not now and Allow for that one call; nothing is sent until the person presses Allow.      |
 
 Declining changes nothing: no chat, attachment, pin or open is made before the person agrees.
 
@@ -1184,8 +1306,14 @@ markers at a line's start (`# ` to `###### `) are removed; text over its cap is 
 
 ### 18.4 What the agent cannot do
 
-The agent cannot press card buttons, sign in to accounts, install or uninstall a plugin (it posts a card the
-person answers), or switch on a routine that needs consent (section 19.3).
+The agent cannot sign in to accounts, install or uninstall a plugin (it posts a card the person answers), or switch
+on a routine that needs consent (section 19.3).
+
+It can drive a full-screen app's screen, but only by a named button or a named field: it cannot press an unnamed
+element, a position on the screen, a key or the footer buttons of an inline card. What its press calls reaches a
+plugin as section 16.5 says: a read passes, a write only if the tool is open to agents or opted in and the person said
+yes to that call; a tool whose name has one of the words section 16.5 lists (filing, sending, paying and the
+like) cannot opt in. It cannot press a button of the Bot itself.
 
 ## 19. Routines
 
@@ -1392,35 +1520,37 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 
 ### 23.1 What the host guarantees
 
-| #   | Guarantee                                                                                       | Section  |
-| --- | ----------------------------------------------------------------------------------------------- | -------- |
-| H1  | An app reaches only the bridge: no network, files, processes or engine storage.                 | 11.2, 12 |
-| H2  | Bridge calls stay within the app's declared tools, targets, files and storage.                  | 12, 13   |
-| H3  | Every bridge call is signed by a key the app cannot read and checked before the plugin sees it. | 5.5, 14  |
-| H4  | Calls from other processes or web pages are refused (no valid signature).                       | 14.2     |
-| H5  | Replayed and stale calls are refused.                                                           | 14.3     |
-| H6  | A tool switched off stays off for the agent, apps, resolves and routines.                       | 14.5     |
-| H7  | A TSX app's code is the code the publisher signed.                                              | 11.2     |
-| H8  | Nothing opens an app or a URL without the consent of section 17.                                | 17       |
-| H9  | Only approved plugins' text reaches the model, capped and labelled.                             | 18.3     |
-| H10 | Links, pins and attachments carry tickets, not raw identifiers.                                 | 15       |
-| H11 | A plugin failure does not take the host down.                                                   | 22.3     |
-| H12 | Uninstall leaves no key, account, file, pin, attachment or storage behind.                      | 9.6      |
-| H13 | A preview document is static and never handed to the app.                                       | 13.5     |
-| H14 | Account tokens reach only the plugin, never the model, chat, logs or apps.                      | 20       |
+| #   | Guarantee                                                                                       | Section    |
+| --- | ----------------------------------------------------------------------------------------------- | ---------- |
+| H1  | An app reaches only the bridge: no network, files, processes or engine storage.                 | 11.2, 12   |
+| H2  | Bridge calls stay within the app's declared tools, targets, files and storage.                  | 12, 13     |
+| H3  | Every bridge call is signed by a key the app cannot read and checked before the plugin sees it. | 5.5, 14    |
+| H4  | Calls from other processes or web pages are refused (no valid signature).                       | 14.2       |
+| H5  | Replayed and stale calls are refused.                                                           | 14.3       |
+| H6  | A tool switched off stays off for the agent, apps, resolves and routines.                       | 14.5       |
+| H7  | A TSX app's code is the code the publisher signed.                                              | 11.2       |
+| H8  | Nothing opens an app or a URL without the consent of section 17.                                | 17         |
+| H9  | Only approved plugins' text reaches the model, capped and labelled.                             | 18.3       |
+| H10 | Links, pins and attachments carry tickets, not raw identifiers.                                 | 15         |
+| H11 | A plugin failure does not take the host down.                                                   | 22.3       |
+| H12 | Uninstall leaves no key, account, file, pin, attachment or storage behind.                      | 9.6        |
+| H13 | A preview document is static and never handed to the app.                                       | 13.5       |
+| H14 | Account tokens reach only the plugin, never the model, chat, logs or apps.                      | 20         |
+| H15 | A write the AI makes through an app reaches a tool only as section 16.5 says.                   | 14.2, 16.5 |
+| H16 | A generated widget calls only tools offered to widgets, and only what the person allowed.       | 16.4, 17   |
 
 ### 23.2 What the plugin MUST do
 
 | #   | Requirement                                                                                                                                                                                                          |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1  | Authorize every subject, not only the app: for each ticket or identifier argument, check it is one this caller may use (`buwiz/caller`).                                                                             |
+| P1  | Authorize every subject, not only the app: for each ticket or identifier argument, check it is one this caller may use (`buwiz/caller`), whatever its `origin`, a widget's included.                                 |
 | P2  | Issue tickets as random values and keep the subject map on the plugin's side.                                                                                                                                        |
 | P3  | Return only a title from `buwiz.ticket.resolve`.                                                                                                                                                                     |
 | P4  | Never log the plugin key, an account token, a subject, tool arguments or `buwiz.provision`'s content.                                                                                                                |
-| P5  | Keep side effects (filing, sending, paying) behind an explicit argument or confirmation the model cannot supply alone.                                                                                               |
+| P5  | Keep side effects (filing, sending, paying) behind an explicit argument or confirmation the model cannot supply alone. Never opt a filing, sending or paying tool in to the AI's press (section 16.5).               |
 | P6  | No side effects for `origin: "resolve"` or `"routine"`. In a routine's turn allow a write only when the routine lists it in `writes`, only within the instance's params, and only on evidence the routine was given. |
 | P7  | Answer `buwiz.provision` before any other tool; refuse every other tool until it succeeds.                                                                                                                           |
-| P8  | Mark read-only tools `readOnlyHint: true`, and only those.                                                                                                                                                           |
+| P8  | Mark read-only tools `readOnlyHint: true`, and only those: the host passes such a tool every call, the AI's too.                                                                                                     |
 | P9  | Keep model text within the caps of section 18.3 and never tell the model to bypass consent.                                                                                                                          |
 | P10 | Do not read the host's files or environment, or other plugins' data.                                                                                                                                                 |
 | P11 | Keep user-facing messages free of subject data.                                                                                                                                                                      |
@@ -1463,6 +1593,7 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 | `buwiz.actions`                                     | 3; id 64 characters `[A-Za-z0-9_.:-]`; label 24 characters; one primary                   |
 | `buwiz.meta` / `buwiz.settle`                       | 32 / 120 characters, one line                                                             |
 | `buwiz.call` args / result                          | 256 KiB / 1 MiB                                                                           |
+| A widget's call args / result                       | 256 KiB / 1 MiB                                                                           |
 | `buwiz.preview` document / title                    | `max_bytes` (at most 8 MiB) / 120 characters                                              |
 | `buwiz.copy` text                                   | 1 MiB                                                                                     |
 | `buwiz.open` URL                                    | 2048 characters                                                                           |

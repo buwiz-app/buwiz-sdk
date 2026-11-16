@@ -7,6 +7,7 @@ import {
   Accounts,
   type Args,
   type Caller,
+  type Json,
   type Manifest,
   type Plugin,
   PROTOCOL,
@@ -88,6 +89,16 @@ class Toy implements Plugin {
 
   call(tool: string, args: Args, caller: Caller) {
     this.calls.push(tool);
+    if (args.whoami !== undefined) {
+      // what the caller says of itself, as plain JSON
+      const p = caller.press;
+      let press: Json = null;
+      if (p?.by === "ai") press = { by: "ai", who: p.who };
+      if (p?.by === "ai_approved") {
+        press = { by: "ai_approved", who: p.who, approved_by: p.approvedBy, once: p.once, args_hash: p.argsHash, shown_hash: p.shownHash, at: p.at };
+      }
+      return ok({ origin: caller.origin, widget: caller.widget ?? null, press });
+    }
     if (typeof args.needs === "string") {
       // a tool that reads with a pushed token answers its subject, never the token
       const held = caller.account(args.needs);
@@ -202,6 +213,22 @@ test("an app reaches only the tools its certified open grants", async () => {
   expect(result(await run.call("toy_list", {}, appCaller("board", 1))).code).toBe("permission_denied");
 });
 
+test("a write the AI makes through an app needs the same open and grant", async () => {
+  const run = new Run();
+  await run.provision();
+  // such a call comes as origin agent, still naming its app and open
+  const ai = (app: string, byte: number) => ({ ...appCaller(app, byte), origin: "agent" });
+  expect(result(await run.call("toy_add", {}, ai("fast", 4))).code).toBe("permission_denied");
+  await run.open("fast", 4);
+  await run.open("board", 1);
+  expect(result(await run.call("toy_add", {}, ai("fast", 4))).added).toBe(true);
+  // the board's open does not grant toy_add
+  expect(result(await run.call("toy_add", {}, ai("board", 1))).code).toBe("permission_denied");
+  // an open named without its app is no open
+  expect(result(await run.call("toy_add", {}, { origin: "agent", open_id: b64u(new Uint8Array(16).fill(4)) })).code).toBe("permission_denied");
+  expect(run.toy.calls).toEqual(["toy_add"]);
+});
+
 test("resolves and routines only read unless the routine declares the write", async () => {
   const run = new Run();
   await run.provision();
@@ -210,7 +237,12 @@ test("resolves and routines only read unless the routine declares the write", as
   expect(result(await run.call("toy_add", {}, { origin: "agent", routine: "tidy" })).added).toBe(true);
   expect(result(await run.call("toy_add", {}, { origin: "agent", routine: "other" })).code).toBe("permission_denied");
   expect(result(await run.call("toy_add", {}, { origin: "agent" })).added).toBe(true);
-  expect(run.toy.calls).toEqual(["toy_add", "toy_add"]);
+  // a caller this library does not know, or none, reads and does not write
+  for (const unknown of [{ origin: "somebody" }, undefined]) {
+    expect(result(await run.call("toy_add", {}, unknown)).code).toBe("permission_denied");
+    expect(result(await run.call("toy_list", {}, unknown)).text).toBe("milk");
+  }
+  expect(run.toy.calls).toEqual(["toy_add", "toy_add", "toy_list", "toy_list"]);
 });
 
 test("tickets resolve to titles and uninstall forgets them", async () => {
@@ -360,4 +392,60 @@ test("the harness signs in and out as the host does", async () => {
   expect(await h.agent("toy_list", needs)).toMatchObject({ subject: "work@example.com" });
   await h.signOut("google", "work");
   await expect(h.agent("toy_list", needs)).rejects.toMatchObject({ code: "account_required" });
+});
+
+const HASH = `sha256:${"0".repeat(64)}`;
+
+test("a press record reaches the tool, and a malformed one is dropped", async () => {
+  const run = new Run();
+  await run.provision();
+  await run.open("board", 1);
+  const whoami = async (caller: unknown) => result(await run.call("toy_list", { whoami: true }, caller));
+  const caller: Record<string, unknown> = appCaller("board", 1);
+  // the person's own call has no press
+  expect(await whoami(caller)).toEqual({ origin: "app", widget: null, press: null });
+  // a read the AI made: origin app, with its record
+  caller.press = { by: "ai", who: "agent.example" };
+  expect(await whoami(caller)).toEqual({ origin: "app", widget: null, press: { by: "ai", who: "agent.example" } });
+  // a write the AI made after the person's yes
+  const approved = {
+    by: "ai_approved",
+    who: "agent.example",
+    approved_by: "person.example",
+    once: "press-0123456789abcdef",
+    args_hash: HASH,
+    shown_hash: HASH,
+    at: 1793000000000,
+  };
+  caller.origin = "agent";
+  caller.press = approved;
+  expect(await whoami(caller)).toEqual({ origin: "agent", widget: null, press: approved });
+  // anything else is no record
+  for (const bad of ["ai", { by: "person", who: "person.example" }, { by: "ai" }, { by: "ai_approved", who: "agent.example" }]) {
+    caller.press = bad;
+    expect((await whoami(caller)).press).toBeNull();
+  }
+  // `at` is a whole number from 0 to 2^53 - 1, however it is written
+  const at = async (value: unknown) => {
+    caller.press = { ...approved, at: value };
+    return (await whoami(caller)).press?.at ?? null;
+  };
+  expect(await at(JSON.parse("1793000000000.0"))).toBe(1793000000000);
+  expect(await at(9007199254740991)).toBe(9007199254740991);
+  for (const bad of [1.5, -1, 9007199254740992, "1"]) expect(await at(bad)).toBeNull();
+});
+
+test("a widget call carries its origin and name, and an unknown origin is unknown", async () => {
+  const run = new Run();
+  await run.provision();
+  const widget = { origin: "widget", plugin: "app.buwiz.toy", widget: "R37", ts: 1 };
+  const who = result(await run.call("toy_list", { whoami: true }, widget));
+  expect(who.origin).toBe("widget");
+  expect(who.widget).toBe("R37");
+  // a widget the person allowed to write reaches a write tool
+  expect(result(await run.call("toy_add", {}, widget)).added).toBe(true);
+  // an origin this library does not know is not a crash
+  const other = result(await run.call("toy_list", { whoami: true }, { origin: "somebody", plugin: "app.buwiz.toy", ts: 1 }));
+  expect(other.origin).toBe("unknown");
+  expect(other.widget).toBeNull();
 });
