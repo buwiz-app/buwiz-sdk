@@ -7,6 +7,7 @@ import {
   Accounts,
   type Args,
   type Caller,
+  type Json,
   type Manifest,
   type Plugin,
   PROTOCOL,
@@ -88,6 +89,16 @@ class Toy implements Plugin {
 
   call(tool: string, args: Args, caller: Caller) {
     this.calls.push(tool);
+    if (args.whoami !== undefined) {
+      // what the caller says of itself, as plain JSON
+      const p = caller.press;
+      let press: Json = null;
+      if (p?.by === "ai") press = { by: "ai", who: p.who };
+      if (p?.by === "ai_approved") {
+        press = { by: "ai_approved", who: p.who, approved_by: p.approvedBy, once: p.once, args_hash: p.argsHash, shown_hash: p.shownHash, at: p.at };
+      }
+      return ok({ origin: caller.origin, press });
+    }
     if (typeof args.needs === "string") {
       // a tool that reads with a pushed token answers its subject, never the token
       const held = caller.account(args.needs);
@@ -360,4 +371,37 @@ test("the harness signs in and out as the host does", async () => {
   expect(await h.agent("toy_list", needs)).toMatchObject({ subject: "work@example.com" });
   await h.signOut("google", "work");
   await expect(h.agent("toy_list", needs)).rejects.toMatchObject({ code: "account_required" });
+});
+
+const HASH = `sha256:${"0".repeat(64)}`;
+
+test("a press record reaches the tool, and a malformed one is dropped", async () => {
+  const run = new Run();
+  await run.provision();
+  await run.open("board", 1);
+  const whoami = async (caller: unknown) => result(await run.call("toy_list", { whoami: true }, caller));
+  const caller: Record<string, unknown> = appCaller("board", 1);
+  // the person's own call has no press
+  expect(await whoami(caller)).toEqual({ origin: "app", press: null });
+  // a read the AI made: origin app, with its record
+  caller.press = { by: "ai", who: "agent.example" };
+  expect(await whoami(caller)).toEqual({ origin: "app", press: { by: "ai", who: "agent.example" } });
+  // a write the AI made after the person's yes
+  const approved = {
+    by: "ai_approved",
+    who: "agent.example",
+    approved_by: "person.example",
+    once: "press-0123456789abcdef",
+    args_hash: HASH,
+    shown_hash: HASH,
+    at: 1793000000000,
+  };
+  caller.origin = "agent";
+  caller.press = approved;
+  expect(await whoami(caller)).toEqual({ origin: "agent", press: approved });
+  // anything else is no record
+  for (const bad of ["ai", { by: "person", who: "person.example" }, { by: "ai" }, { by: "ai_approved", who: "agent.example" }]) {
+    caller.press = bad;
+    expect((await whoami(caller)).press).toBeNull();
+  }
 });

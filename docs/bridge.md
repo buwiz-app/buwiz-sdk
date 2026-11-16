@@ -176,7 +176,7 @@ buwiz.meta({ text: "Due in 3 days", pill: true });
 ## What your tool receives
 
 A bridge call reaches your tool as `tools/call` with the arguments as sent and
-`_meta["buwiz/caller"]` = `{origin, plugin, app, open_id, ts}` (spec 16.1).
+`_meta["buwiz/caller"]` = `{origin, plugin, app, open_id, ts}`, and `press` when the AI made the call (spec 16.1, 16.5).
 `origin` is `app` for bridge calls, `agent` for the model, `routine` for a
 routine's query and `resolve` for resolve tools. A bridge call made while the
 agent, not the person, is driving your screen comes as `agent` too, unless the
@@ -184,7 +184,8 @@ tool has `readOnlyHint: true`: your screen's own reads keep working as `app`, an
 tool you keep for apps refuses its writes. A write reaches your tool only if the
 tool's `_meta["buwiz/audience"]` names `agent`: Buwiz Bot holds back every other
 write, unsent, and tells the person why. Each of these calls, reads included,
-carries `press`, the record of the press: `{by: "ai", who}`. So `origin: "app"`
+carries `press`, the record of the press: `{by: "ai", who}`. The host sets
+`origin` and `press`; no app or plugin can claim either. So `origin: "app"`
 with a `press` is your screen reading while the AI drives it, not the person's
 own act, and `readOnlyHint` has to be true of the tool: nothing it does may
 change anything.
@@ -192,12 +193,16 @@ change anything.
 A tool that names no `agent` can still take the AI's press, one press at a time,
 if it opts in with `_meta["buwiz/press"] = {approved: true, effect: "post", describe: "<a read>"}`.
 `effect` is `post` or `close`. Anything else, a tool with no `effect`, or a tool whose
-name says file, submit, send, queue, pay, void or reopen, is refused: filing is never the AI's.
+name has the word file, filing, submit, send, queue, pay, paid, void or reopen (words are the runs of letters and digits,
+so `ledger_pay_run` has `pay` and `sendmail` has none), is refused: filing is never the AI's.
 Buwiz Bot holds the call unsent and shows the person a card with Not now and Allow.
-`describe` is a read of yours: it gets `{tool, args}` and answers
+`describe` is a read of yours (`readOnlyHint: true`, and in the app's
+`permissions.tools`): it gets `{tool, args}` and answers `structuredContent`
 `{title, lines}`, what the call will do with its real values, covering every
-argument the call uses. A tool with no such read is refused, and it should refuse
-an argument it can't show. Only the person's own press of Allow lets the call go, and it
+argument the call uses. The title is 1 to 120 characters, there are 1 to 80
+lines of 1 to 400 characters, and none holds a ticket or an invisible character.
+A tool with no such read is refused, and the read should refuse an argument it
+can't show. Only the person's own press of Allow lets the call go, and it
 reaches you as `origin: "agent"` with `press` =
 `{by: "ai_approved", who, approved_by, once, args_hash, shown_hash, at}`. Check
 `args_hash` (`sha256:` over the arguments' JCS bytes) against the arguments you

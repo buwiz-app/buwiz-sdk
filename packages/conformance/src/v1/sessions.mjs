@@ -92,7 +92,7 @@ export function resultBytes(r) {
   return text + (r?.structuredContent === undefined ? 0 : Buffer.byteLength(JSON.stringify(r.structuredContent)));
 }
 
-/** A tool result without `_meta` (16.1, 16.5: never shown past the broker). */
+/** A tool result without `_meta` (16.1, 16.6: never shown past the broker). */
 export function stripMeta(r) {
   const out = { ...r };
 
@@ -107,7 +107,7 @@ const ACCOUNT_USE = "buwiz/account_use";
 /** A tool result as Buwiz Bot gets it from an app's call: stripped, but for
  * `_meta["buwiz/document"]`, `buwiz/open_with`, `buwiz/save` and
  * `buwiz/account_use`, the keys Buwiz Bot itself acts on; the app and the
- * model still never see them (16.5). */
+ * model still never see them (16.6). */
 export function hostResult(r) {
   const out = stripMeta(r);
   const kept = Object.fromEntries(

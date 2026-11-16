@@ -5,7 +5,7 @@
 use buwiz_plugin::key::PluginKey;
 use buwiz_plugin::manifest::{self, Served};
 use buwiz_plugin::{
-    Args, Caller, Plugin, Server, Tickets, Tool, account_required, b64, fail, jcs, ok,
+    Args, Caller, Plugin, Press, Server, Tickets, Tool, account_required, b64, fail, jcs, ok,
 };
 use serde_json::{Value, json};
 
@@ -78,6 +78,27 @@ impl Plugin for Toy {
 
     fn call(&mut self, tool: &str, args: &Args, caller: &Caller) -> Value {
         self.calls.push(tool.to_string());
+        if args.contains_key("whoami") {
+            // what the caller says of itself, as plain JSON
+            let press = match &caller.press {
+                None => json!(null),
+                Some(Press::Ai { who }) => json!({ "by": "ai", "who": who }),
+                Some(Press::AiApproved {
+                    who,
+                    approved_by,
+                    once,
+                    args_hash,
+                    shown_hash,
+                    at,
+                }) => json!({
+                    "by": "ai_approved", "who": who, "approved_by": approved_by, "once": once,
+                    "args_hash": args_hash, "shown_hash": shown_hash, "at": at,
+                }),
+            };
+            return ok(
+                json!({ "origin": format!("{:?}", caller.origin).to_lowercase(), "press": press }),
+            );
+        }
         if let Some(account) = args.get("needs").and_then(Value::as_str) {
             // a tool that reads with a pushed token answers its subject, never the token
             return match caller.account(account) {
@@ -506,4 +527,47 @@ fn the_local_manifest_check_finds_the_usual_mistakes() {
             "apps[0].permissions.tools names toy_gone, which is not a tool",
         ]
     );
+}
+
+const HASH: &str = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+#[test]
+fn a_press_record_reaches_the_tool_and_a_malformed_one_is_dropped() {
+    let mut run = Run::new();
+    run.provision();
+    let whoami = |run: &mut Run, caller: Value| {
+        let reply = run.call("toy_list", json!({ "whoami": true }), caller);
+        result(&reply).clone()
+    };
+    let mut caller = app_caller("board", 1);
+    run.open("board", 1);
+    // the person's own call has no press
+    let person = whoami(&mut run, caller.clone());
+    assert_eq!(person["origin"], "app");
+    assert_eq!(person["press"], json!(null));
+    // a read the AI made: origin app, with its record
+    caller["press"] = json!({ "by": "ai", "who": "agent.example" });
+    let read = whoami(&mut run, caller.clone());
+    assert_eq!(read["origin"], "app");
+    assert_eq!(read["press"], json!({ "by": "ai", "who": "agent.example" }));
+    // a write the AI made after the person's yes
+    let approved = json!({
+        "by": "ai_approved", "who": "agent.example", "approved_by": "person.example",
+        "once": "press-0123456789abcdef", "args_hash": HASH, "shown_hash": HASH, "at": 1793000000000_u64,
+    });
+    caller["origin"] = json!("agent");
+    caller["press"] = approved.clone();
+    let write = whoami(&mut run, caller.clone());
+    assert_eq!(write["origin"], "agent");
+    assert_eq!(write["press"], approved);
+    // anything else is no record
+    for bad in [
+        json!("ai"),
+        json!({ "by": "person", "who": "person.example" }),
+        json!({ "by": "ai" }),
+        json!({ "by": "ai_approved", "who": "agent.example" }),
+    ] {
+        caller["press"] = bad;
+        assert_eq!(whoami(&mut run, caller.clone())["press"], json!(null));
+    }
 }

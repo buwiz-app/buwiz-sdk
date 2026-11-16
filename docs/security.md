@@ -9,8 +9,8 @@ plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
       may use _this_ ticket. Look the ticket up in your own store and refuse what
       you did not issue or what this user may not see. Do this for every call
       from an open, which is any call with an `open_id`, whatever its `origin`:
-      a press the AI makes on your screen comes as `origin: "agent"` and still
-      has one.
+      a write the AI makes on your screen comes as `origin: "agent"` and still
+      has one, and its reads come as `origin: "app"` with a `press` (spec 16.1).
 
   ```js
   function greet(args, caller) {
@@ -51,7 +51,8 @@ plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
 
 - [ ] **P5 Side effects need an explicit argument the model cannot supply
       alone.** Filing, sending and paying take a confirmation token that only the
-      app's own UI produces.
+      app's own UI produces, and a tool of those never opts in to the AI's press
+      (spec 16.5).
 
   ```js
   if (args.confirm !== pendingGrant.get(args.draft)) return fail("permission_denied", "Confirm in the app first.");

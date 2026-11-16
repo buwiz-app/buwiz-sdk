@@ -62,7 +62,7 @@ pub use accounts::{Account, Accounts, account_required};
 pub use manifest::PROTOCOL;
 pub use server::{
     Args, CERT_MAX_MS, Caller, INVALID_PARAMS, INVALID_REQUEST, MCP_PROTOCOL, METHOD_NOT_FOUND,
-    Origin, PARSE_ERROR, Plugin, RESERVED, Server, Tool, serve_stdio,
+    Origin, PARSE_ERROR, Plugin, Press, RESERVED, Server, Tool, serve_stdio,
 };
 pub use tickets::{Tickets, is_ticket, new_ticket};
 

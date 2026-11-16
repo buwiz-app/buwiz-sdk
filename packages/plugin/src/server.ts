@@ -82,6 +82,24 @@ export interface Tool {
 /** Who asked: _meta["buwiz/caller"]. "unknown": the broker sent none. */
 export type Origin = "app" | "agent" | "routine" | "resolve" | "unknown";
 
+/** The record of an AI's press: _meta["buwiz/caller"].press (spec 16.5). Only
+ *  the host sets it, on a call the person did not make. */
+export type Press =
+  | { by: "ai"; who: string }
+  | {
+      by: "ai_approved";
+      who: string;
+      approvedBy: string;
+      /** The one-time id of the press. */
+      once: string;
+      /** "sha256:" and 64 hex digits over the JCS bytes of the call's args. */
+      argsHash: string;
+      /** The same over the card the person saw. */
+      shownHash: string;
+      /** When the person said yes, in unix ms. */
+      at: number;
+    };
+
 export interface Caller {
   origin: Origin;
   /** The app, for "app". */
@@ -90,10 +108,27 @@ export interface Caller {
   openId?: string;
   /** The routine whose turn or query this is. */
   routine?: string;
+  /** The record of the AI's press, when the AI made the call (spec 16.5). An
+   *  "app" call that has one is a read the AI made, not the person's act. */
+  press?: Press;
   /** `account`'s live token: its "default" sign-in, else any live one.
    *  undefined: answer accountRequired(account) so the host asks the person
    *  to sign in. */
   account(account: string): Account | undefined;
+}
+
+function pressOf(record: unknown): Press | undefined {
+  if (typeof record !== "object" || record === null) return undefined;
+  const r = record as Record<string, unknown>;
+  const text = (key: string) => (typeof r[key] === "string" ? (r[key] as string) : undefined);
+  const who = text("who");
+  if (who === undefined) return undefined;
+  if (r.by === "ai") return { by: "ai", who };
+  const [approvedBy, once, argsHash, shownHash] = [text("approved_by"), text("once"), text("args_hash"), text("shown_hash")];
+  const at = r.at;
+  if (r.by !== "ai_approved" || approvedBy === undefined || once === undefined || argsHash === undefined || shownHash === undefined) return undefined;
+  if (typeof at !== "number" || !Number.isSafeInteger(at) || at < 0) return undefined;
+  return { by: "ai_approved", who, approvedBy, once, argsHash, shownHash, at };
 }
 
 export function callerOf(params: Record<string, unknown>, accounts: Accounts = new Accounts()): Caller {
@@ -101,7 +136,7 @@ export function callerOf(params: Record<string, unknown>, accounts: Accounts = n
   const text = (key: string) => (typeof c?.[key] === "string" ? (c[key] as string) : undefined);
   const o = text("origin");
   const origin: Origin = o === "app" || o === "agent" || o === "routine" || o === "resolve" ? o : "unknown";
-  return { origin, app: text("app"), openId: text("open_id"), routine: text("routine"), account: (id: string) => accounts.get(id) };
+  return { origin, app: text("app"), openId: text("open_id"), routine: text("routine"), press: pressOf(c?.press), account: (id: string) => accounts.get(id) };
 }
 
 /** A mini app's own half: its manifest, app sources and tools. Server does

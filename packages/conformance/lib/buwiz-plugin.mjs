@@ -87,7 +87,7 @@ export function ticketStore() {
  *   manifestFile  path of the signed manifest (read on every request)
  *   apps          {appId: path of the .tsx source}
  *   tools         [{name, description, inputSchema, annotations?, run(args, caller, extra)}]
- *                 `caller` is _meta["buwiz/caller"] (16.1): {origin, plugin, app?, open_id?, routine?, ts}
+ *                 `caller` is _meta["buwiz/caller"] (16.1): {origin, plugin, app?, open_id?, routine?, press?, ts}
  *   ticketTitle   (subject) => the title buwiz.ticket.resolve shows
  *   instructions  MCP server instructions (approved text, 18.3), optional
  *   name, version the MCP server identity
