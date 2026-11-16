@@ -1,5 +1,5 @@
 // The template's app: greets the friend in buwiz.props.ticket, shows where
-// it is mounted. Imports only nsh, nsh/base and buwiz (spec 6.3); data comes
+// it is mounted. Imports only nsh, nsh/base and buwiz (spec 11.2); data comes
 // from buwiz.call alone (no fetch, no network).
 import { signal, Text, View } from "nsh";
 import { buwiz } from "buwiz";

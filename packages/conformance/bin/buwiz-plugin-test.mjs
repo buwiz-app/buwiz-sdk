@@ -47,7 +47,7 @@ import { isObject, isString, parseIJson, signedBytes } from "../src/v1/jcs.mjs";
 import { fileKeystore } from "../src/v1/keystore.mjs";
 import { HOST_PROTOCOL, MANIFEST_URI, NATIVE_ABIS, NATIVE_SCREEN, checkTools, manifestHash, permsDigest, verifyManifest } from "../src/v1/manifest.mjs";
 import { createPlugins, resultData } from "../src/v1/plugins.mjs";
-import { MAX_PER_SECOND, PROMPT_MAX, checkOpen, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
+import { MAX_PER_SECOND, PROMPT_MAX, checkOpen, checkPrompt, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
 import { fingerprintOf, signManifest } from "../src/v1/sign-manifest.mjs";
 import { TRUST_FILE, isApproved, loadTrust } from "../src/v1/trust.mjs";
 import { newTicket } from "../lib/buwiz-plugin.mjs";
@@ -289,14 +289,6 @@ function checkResolve(m, data) {
   return found;
 }
 
-// A raw `prompt` answer (15.2) held to its rules: a command's only,
-// non-blank text of at most PROMPT_MAX characters.
-function checkPromptAnswer(m, kind, data) {
-  expect(kind === "command", "a prompt result answers a command, not a scope");
-  expect(isString(data.text) && /[^ \t\r\n]/.test(data.text), "a prompt result needs text (not only spaces and line breaks)");
-  expect([...data.text].length <= PROMPT_MAX, `a prompt's text is ${[...data.text].length} characters; at most ${PROMPT_MAX}`);
-}
-
 // ── the run ──────────────────────────────────────────────────────────────
 
 export async function runPluginTest(o) {
@@ -518,21 +510,19 @@ export async function runPluginTest(o) {
  *  `await pace(() => call())`. A call is counted the moment it starts, so
  *  callers running in parallel are counted too. */
 export function pacer(max, windowMs) {
-  const sent = [];
+  const started = [];
 
   return async (fn) => {
     for (;;) {
-      while (sent.length && Date.now() - sent[0] >= windowMs) sent.shift();
+      while (started.length && Date.now() - started[0] >= windowMs) started.shift();
 
-      if (sent.length < max) break;
-      await new Promise((r) => setTimeout(r, windowMs - (Date.now() - sent[0]) + 5));
+      if (started.length < max) break;
+      await new Promise((r) => setTimeout(r, windowMs - (Date.now() - started[0]) + 5));
     }
 
-    try {
-      return await fn();
-    } finally {
-      sent.push(Date.now());
-    }
+    started.push(Date.now());
+
+    return fn();
   };
 }
 
@@ -738,7 +728,7 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 
       if (prompt)
         await run("INV-10", `${kind} ${e.name}: the prompt ${e.resolve} answers for ${JSON.stringify(value)} is a command's, non-blank, at most ${PROMPT_MAX} characters, and passes the broker unchanged`, async () => {
-          checkPromptAnswer(m, kind, prompt);
+          checkPrompt(kind, prompt);
           const res = await sessions.resolve({ plugin: m.id, kind, name: e.name, value, complete });
 
           expect(res.result === "prompt" && res.text === prompt.text, `the broker answered ${res.result}`);

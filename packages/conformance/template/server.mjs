@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// sdk/mini-app/template/server.mjs — the smallest correct v1 plugin.
+// template/server.mjs — the smallest correct plugin.
 //
 // Copy this directory, rename the id and short in manifest.json, and
 // replace the tools and the app (README.md, steps 1-10). The reserved
-// tools of spec 7.8 (provision first, the key in memory only, session
+// tools of spec 10 (provision first, the key in memory only, session
 // certificates, ticket titles, uninstall, -32601 for unknown buwiz.*) live
 // in ../lib/buwiz-plugin.mjs; this file holds only what is yours.
 //
@@ -17,10 +17,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const tickets = ticketStore();
 
 // The subjects this plugin knows. A real plugin looks them up in its own
-// store; tickets stand for them everywhere outside this process (9.5).
+// store; tickets stand for them everywhere outside this process (15.4).
 const FRIENDS = ["Ada", "Grace", "Linus"];
 
-// The resolve tool (9.2): `@hello:friend:<name>` and the /hello command.
+// The resolve tool (15.2): `@hello:friend:<name>` and the /hello command.
 function resolve(args) {
   const value = String(args.value ?? "").trim();
   const matches = FRIENDS.filter((f) => f.toLowerCase().startsWith(value.toLowerCase()));

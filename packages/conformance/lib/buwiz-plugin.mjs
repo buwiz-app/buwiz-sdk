@@ -1,14 +1,14 @@
-// sdk/mini-app/lib/buwiz-plugin.mjs — the reserved half of a v1 plugin.
+// lib/buwiz-plugin.mjs — the reserved half of a plugin.
 //
 // Every Buwiz Mini App Protocol 1.0 plugin answers the same reserved tools
-// (§10) the same way; this module does it once so a plugin's own file
+// (spec 10) the same way; this module does it once so a plugin's own file
 // holds only its tools and apps. What it guarantees:
 //
 // - buwiz.provision is answered first; every other tool fails until it has
 //   succeeded (P7). The plugin key is kept in memory only, never logged,
 //   written or echoed (5.4, P4).
-// - buwiz.session.open checks the app exists and the permissions digest
-//   equals the manifest's, then signs the session certificate over JCS
+// - buwiz.session.open checks the app exists, open_id and ks_pub are well
+//   formed and the permissions digest equals the manifest's, then signs the session certificate over JCS
 //   with the plugin key (5.5); not_after is at most 8 h ahead.
 // - buwiz.ticket.resolve answers a title, never the subject (P3).
 // - buwiz.uninstall forgets every ticket and session (10.6, 15.4).
@@ -28,7 +28,7 @@ import {
   CallToolRequestSchema, ErrorCode, ListResourcesRequestSchema, ListToolsRequestSchema, McpError, ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { isV1 } from "../src/grammar.mjs";
-import { pubOf, sign } from "../src/v1/ed.mjs";
+import { fromB64u, pubOf, sign } from "../src/v1/ed.mjs";
 import { isObject, parseIJson, signedBytes } from "../src/v1/jcs.mjs";
 import { MANIFEST_URI, manifestHash, permsDigest } from "../src/v1/manifest.mjs";
 
@@ -117,6 +117,10 @@ export async function startPlugin(opts) {
 
     if (!app) return fail("invalid_args", `no app ${String(args?.app).slice(0, 60)}`);
 
+    if (!fromB64u(args.open_id, 16)) return fail("invalid_args", "open_id must be 128 bits of base64url");
+
+    if (!fromB64u(args.ks_pub, 32)) return fail("invalid_args", "ks_pub must be a 32-byte ed25519 key in base64url");
+
     if (args.perms_sha256 !== permsDigest(app.permissions)) return fail("invalid_args", "perms_sha256 does not match the manifest");
 
     if (!Number.isSafeInteger(args.not_after) || args.not_after > Date.now() + EIGHT_HOURS) return fail("invalid_args", "not_after must be within 8 h");
@@ -157,7 +161,7 @@ export async function startPlugin(opts) {
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const { name: tool, arguments: args = {}, _meta: meta } = req.params;
 
-    // provision first; no other rox.* tool works without a key either
+    // provision first; no other buwiz.* tool works without a key either
     if (tool === "buwiz.provision") return provision(args);
 
     if (isV1("reservedTool", tool) && !Object.hasOwn(reserved, tool)) throw new McpError(ErrorCode.MethodNotFound, `${tool} is not a tool of this plugin`);

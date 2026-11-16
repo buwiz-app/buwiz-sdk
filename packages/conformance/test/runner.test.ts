@@ -5,6 +5,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pacer } from "../bin/buwiz-plugin-test.mjs";
 import { type Row, RUNNER, SIGNER, keygen, node, probe, probeSays, removeTempDirs, tempDir } from "./support";
 
 afterAll(removeTempDirs);
@@ -39,6 +40,7 @@ test(
       "BRG-04",
       "BRG-06",
       "INV-04",
+      "INV-10",
       "RSV-04",
       "INV-10",
     ]) {
@@ -134,6 +136,35 @@ test(
     const done = await node(RUNNER, ["--no-such-option"]);
     expect(done.code).toBe(2);
     expect(done.err).toContain("unknown option --no-such-option");
+  },
+  MINUTE,
+);
+
+test("the pacer counts a call when it starts: parallel callers never exceed the limit in a window", async () => {
+  const window = 200;
+  const pace = pacer(5, window);
+  const starts: number[] = [];
+  // 15 callers at once, each call slow: a count taken only when a call settles would let all 15 start together
+  await Promise.all(
+    Array.from({ length: 15 }, () =>
+      pace(async () => {
+        starts.push(Date.now());
+        await new Promise((r) => setTimeout(r, 300));
+      }),
+    ),
+  );
+  expect(starts.length).toBe(15);
+  for (const t of starts) expect(starts.filter((u) => u >= t && u < t + window).length).toBeLessThanOrEqual(5);
+});
+
+test(
+  "the runner fails a blank prompt with the check INV-10",
+  async () => {
+    const key = (await keygen(tempDir())).path;
+    const json = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_BREAK=prompt"), "--json"]);
+    const failed = (JSON.parse(json.out) as { rows: Row[] }).rows.filter((r) => r.status === "fail");
+    expect([...new Set(failed.map((r) => r.id))]).toEqual(["INV-10"]);
+    expect(failed[0]?.note).toContain("a prompt result needs text");
   },
   MINUTE,
 );

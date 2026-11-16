@@ -1,11 +1,11 @@
 {
   "protocol": "1.0.0",
-  "id": "app.buwiz.hello",
+  "id": "com.example.hello",
   "short": "hello",
   "version": "0.1.0",
   "title": "Hello",
   "description": "The Mini App template: one tool, one scope, one app.",
-  "publisher": { "id": "app.buwiz", "key_id": "gc-2026-01", "name": "Goldcoders" },
+  "publisher": { "id": "com.example", "key_id": "example-key-01", "name": "Example Publisher" },
   "commands": [
     { "name": "hello", "args": "[name]", "description": "Open Hello, optionally for a friend", "resolve": "hello_resolve" }
   ],

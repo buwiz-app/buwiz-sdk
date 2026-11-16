@@ -1,8 +1,8 @@
 # Make cards fast
 
-An answer card (spec 9.8) mounts under the assistant's reply the moment it
-arrives. Buwiz Bot does most of the work to make that instant (spec 14.6, "Host
-caching and prewarm"); this page is what your plugin should do so the rest is
+An answer card (spec 16.2) mounts under the assistant's reply the moment it
+arrives. Buwiz Bot does most of the work to make that instant (spec 11.2, "Host
+behaviour"); this page is what your plugin should do so the rest is
 instant too.
 
 ## What Buwiz Bot does for you
@@ -49,10 +49,10 @@ fingerprint: its first open compiles again (or prewarm already did).
 Buwiz Bot logs each open at info level (`RUST_LOG=info`):
 
 ```
-mini v1 timing: app.buwiz.ebirforms/deadlines cache hit 0 ms (no fetch, no compile)
-mini v1 timing: app.buwiz.ebirforms/deadlines plugin list 3 ms
-mini v1 timing: app.buwiz.ebirforms/deadlines session open 0 ms (pre-opened)
-mini v1 timing: v1:app.buwiz.ebirforms/deadlines?ticket=… view to first frame 9 ms (session, engine start, module, layout)
+mini v1 timing: com.example.notes/board cache hit 0 ms (no fetch, no compile)
+mini v1 timing: com.example.notes/board plugin list 3 ms
+mini v1 timing: com.example.notes/board session open 0 ms (pre-opened)
+mini v1 timing: v1:com.example.notes/board?ticket=… view to first frame 9 ms (session, engine start, module, layout)
 ```
 
 | Line                  | What it measures                                                                                             | If it is large                                                             |
@@ -60,11 +60,8 @@ mini v1 timing: v1:app.buwiz.ebirforms/deadlines?ticket=… view to first frame 
 | `source fetch`        | Reading the app's source from your plugin (a miss only)                                                      | Your server is slow to answer `resources/read`; keep the source in memory. |
 | `checks+compile`      | The import check and the compile (a miss only)                                                               | The source is large; split it.                                             |
 | `cache hit`           | The cached module was used                                                                                   | —                                                                          |
-| `session open`        | The signed session (4.4); `pre-opened` when Buwiz Bot opened it ahead                                        | Your `buwiz.session.open` is slow; it must only sign.                      |
+| `session open`        | The signed session (5.5); `pre-opened` when Buwiz Bot opened it ahead                                        | Your `buwiz.session.open` is slow; it must only sign.                      |
 | `view to first frame` | From the view to the first laid-out frame: the session, engine start, module evaluation and the first layout | Top-level work in the module, or a first render that waits on tools.       |
 | `prewarmed in`        | A background compile after your plugin started                                                               | —                                                                          |
 
-Measured in Buwiz Bot's development build (BIR, October 2026): a cold open of the
-Deadlines card took about 50 ms of host time (fetch 26, compile 5, session
-2, first frame 8); with the cache and a pre-opened session about 12 ms. What
-remains is your card's own tool calls: render from the snapshot.
+What remains after the cache and a pre-opened session is your card's own tool calls: render from the snapshot.
