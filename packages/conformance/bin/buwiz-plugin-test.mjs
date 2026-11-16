@@ -573,23 +573,41 @@ export async function runPluginTest(o) {
   return { plugin: m ? { id: m.id, short: m.short, version: m.version } : null, trust: trustReport, rows, ok: rows.every((r) => r.status !== "fail") };
 }
 
-/** A gate letting at most `max` calls start in any `windowMs`:
- *  `await pace(() => call())`. A call is counted the moment it starts, so
- *  callers running in parallel are counted too. */
+/** A gate that keeps a caller inside a host's limit of `max` calls in any
+ *  `windowMs`: `await pace(() => call())`. A call holds its place from the
+ *  moment it starts until `windowMs` after it settles. The host counts a call
+ *  when it arrives, which is between those two moments, so the host's window
+ *  for a call has always ended when its place here is free. Callers running
+ *  in parallel are counted too. */
 export function pacer(max, windowMs) {
-  const started = [];
+  // one entry per call: null while it runs, then the time it settled
+  let held = [];
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   return async (fn) => {
     for (;;) {
-      while (started.length && Date.now() - started[0] >= windowMs) started.shift();
+      const now = Date.now();
 
-      if (started.length < max) break;
-      await new Promise((r) => setTimeout(r, windowMs - (Date.now() - started[0]) + 5));
+      held = held.filter((h) => h.settled === null || now - h.settled < windowMs);
+
+      if (held.length < max) break;
+
+      const settled = held.filter((h) => h.settled !== null).map((h) => h.settled);
+
+      // with every place still running there is no time to wait for yet
+      await sleep(settled.length ? windowMs - (now - Math.min(...settled)) + 1 : 5);
     }
 
-    started.push(Date.now());
+    const place = { settled: null };
 
-    return fn();
+    held.push(place);
+
+    try {
+      return await fn();
+    } finally {
+      place.settled = Date.now();
+    }
   };
 }
 

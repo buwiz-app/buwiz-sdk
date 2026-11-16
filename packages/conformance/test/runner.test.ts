@@ -140,7 +140,7 @@ test(
   MINUTE,
 );
 
-test("the pacer counts a call when it starts: parallel callers never exceed the limit in a window", async () => {
+test("the pacer counts a call from the moment it starts: parallel callers never exceed the limit in a window", async () => {
   const window = 200;
   const pace = pacer(5, window);
   const starts: number[] = [];
@@ -155,6 +155,26 @@ test("the pacer counts a call when it starts: parallel callers never exceed the 
   );
   expect(starts.length).toBe(15);
   for (const t of starts) expect(starts.filter((u) => u >= t && u < t + window).length).toBeLessThanOrEqual(5);
+});
+
+test("the pacer keeps sequential calls inside a host that counts each call when it arrives", async () => {
+  // the host's own limit: `max` arrivals in any `window`, counted when a call reaches it
+  const window = 200;
+  const max = 5;
+  const arrived: number[] = [];
+  let refused = 0;
+  const host = async (latency: number) => {
+    await new Promise((r) => setTimeout(r, latency));
+    const now = Date.now();
+    while (arrived.length && now - arrived[0]! >= window) arrived.shift();
+    if (arrived.length >= max) refused += 1;
+    else arrived.push(now);
+  };
+  const pace = pacer(max, window);
+  // the first call is slow to arrive and the rest are quick: a count taken when a call
+  // starts would free the first place before the host's own window for it has ended
+  for (let i = 0; i < 12; i += 1) await pace(() => host(i === 0 ? 80 : 0));
+  expect(refused).toBe(0);
 });
 
 test(
