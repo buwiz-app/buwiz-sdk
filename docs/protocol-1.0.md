@@ -3,9 +3,7 @@
 Version `1.0.0`. Status: final. Date: 2026-11-02.
 
 This is the complete specification of the protocol between Buwiz Bot (the host) and a mini app (a plugin).
-It is written for plugin authors and for host implementers. It consolidates the earlier drafts and
-renumbers them; [protocol-history.md](protocol-history.md) says what came before and what a 1.0 host does
-with it.
+It is written for plugin authors and for host implementers.
 
 ## Contents
 
@@ -113,22 +111,14 @@ prerelease or build part are not compared. A host that implements `1.M` accepts 
 
 A 1.0 host therefore accepts `1.0.x` and nothing else. It MUST refuse, with `protocol_unsupported`:
 
-| Declared                                                                     | Refusal                | What the host says                                                              |
-| ---------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------- |
-| `1.1.0` or a later `1.x`                                                     | `protocol_unsupported` | The plugin needs a Buwiz Bot that supports 1.x.                                 |
-| `2.0.x`, `2.1.x` (pre-release numbering, see [history](protocol-history.md)) | `protocol_unsupported` | The plugin was built for a pre-release protocol: install its 1.0 version.       |
-| any other major                                                              | `protocol_unsupported` | The plugin needs another Buwiz Bot (older majors: install its current version). |
-| not semver                                                                   | `manifest_invalid`     | `protocol: must be a semver string`                                             |
+| Declared                 | Refusal                | What the host says                              |
+| ------------------------ | ---------------------- | ----------------------------------------------- |
+| `1.1.0` or a later `1.x` | `protocol_unsupported` | The plugin needs a Buwiz Bot that supports 1.x. |
+| any other major          | `protocol_unsupported` | The plugin needs another Buwiz Bot.             |
+| not semver               | `manifest_invalid`     | `protocol: must be a semver string`             |
 
-There is no grace period: a 1.0 host runs no 2.0 or 2.1 plugin, even one installed earlier. An install
-record whose protocol is not `1.0.x` MUST NOT start; its state is `failed` with `protocol_unsupported` and a
+There is no grace period: an install record whose protocol is not `1.0.x` MUST NOT start; its state is `failed` with `protocol_unsupported` and a
 message naming the plugin, its version and protocol, and saying to install its 1.0 version or uninstall it.
-
-A **Rox-era plugin** (the drafts' reserved tools `rox.*`, the resource `rox://manifest`, app entries
-`rox-app://…`) MUST be refused even though it may declare `1.0.0` or `1.1.0`. It does not answer
-`buwiz.provision` (section 10.2), so the host's gate refuses it. A host SHOULD recognise one (it lists a
-`rox.*` tool or `rox://manifest`) and report `protocol_unsupported` with "install its 1.0 version" rather
-than a bare `plugin_invalid`.
 
 ### 3.4 Unknown fields
 

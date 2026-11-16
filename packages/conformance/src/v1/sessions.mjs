@@ -1,9 +1,9 @@
 // v1/sessions.mjs — app opens and the calls they make (spec 5.5, 13.2, 14, 15.2).
 //
-// Rox opens an app by asking the broker for a session: the broker relays
+// Buwiz Bot opens an app by asking the broker for a session: the broker relays
 // `buwiz.session.open` to the plugin, verifies the certificate with the
 // plugin key from the install record, and keeps it. From then on every
-// bridge call arrives as Rox's signed envelope and passes the nine checks
+// bridge call arrives as Buwiz Bot's signed envelope and passes the nine checks
 // of 14.2, in the spec's order, before anything reaches the plugin; the
 // plugin then sees `_meta["buwiz/caller"]` (16.1). The broker is the gate for
 // calls, so a check failing here means nothing is sent. Ticket titles,
@@ -35,7 +35,7 @@ const HEX64 = /^[0-9a-f]{64}$/;
 /** What a signed call's `caller.origin` says (16.1): `app`, the person's own act through the
  *  app, only for `actor: "person"`, or for a tool that plainly only reads (the app's screen
  *  reading for itself, whoever is acting). Anything else is the agent's: no actor, a word
- *  this broker doesn't know. The signed value is never copied out. */
+ *  this host doesn't know. The signed value is never copied out. */
 export function originOf(actor, tool) {
   return actor === "person" || tool?.annotations?.readOnlyHint === true ? "app" : "agent";
 }
@@ -48,10 +48,10 @@ const keysAre = (o, names) => {
   return keys.length === names.length && names.every((n, i) => keys[i] === n);
 };
 
-/** The press record a call carries to the plugin: what the Bot's Hub allowed, under the signature.
+/** The press record a call carries to the plugin: what Buwiz Bot allowed, under the signature.
  *  On every call that isn't the person's, reads too: a read goes out as `origin: app`, and this
  *  is how the plugin tells it from the person's own. Only an AI's press, in exactly the protocol's
- *  shape (`PressedBy`), as the Rust broker has it. */
+ *  shape (`PressedBy`). */
 export function pressOf(actor, press) {
   if (actor === "person" || press === null || typeof press !== "object" || Array.isArray(press)) return undefined;
   const ai = press.by === "ai" && keysAre(press, ["by", "who"]) && isHandle(press.who);
@@ -60,7 +60,7 @@ export function pressOf(actor, press) {
 }
 
 /** Whether a signed call may reach `tool`: the person's may, and a read. A write for anyone else
- *  needs a tool whose `buwiz/audience` names `agent`, however the Bot came to send it. */
+ *  needs a tool whose `buwiz/audience` names `agent`, however Buwiz Bot came to send it. */
 export function mayReach(actor, tool) {
   if (originOf(actor, tool) === "app") return true;
   const audience = tool?._meta?.["buwiz/audience"];
@@ -96,11 +96,10 @@ export function stripMeta(r) {
 // the `_meta` key a first-party plugin's tool answers with to switch the active account: {account, label}
 const ACCOUNT_USE = "buwiz/account_use";
 
-/** A tool result as the Bot gets it from an app's call: stripped, but for
+/** A tool result as Buwiz Bot gets it from an app's call: stripped, but for
  * `_meta["buwiz/document"]`, `buwiz/open_with`, `buwiz/save` and
- * `buwiz/account_use`, the keys the Bot itself acts on. The Bot is the host's
- * other half and judges them (`mini_v1::document`, `mini_v1::system_open`,
- * `mini_v1::bridge`); the app and the model still never see them (16.5). */
+ * `buwiz/account_use`, the keys Buwiz Bot itself acts on; the app and the
+ * model still never see them (16.5). */
 export function hostResult(r) {
   const out = stripMeta(r);
   const kept = Object.fromEntries(["buwiz/document", "buwiz/open_with", "buwiz/save", ACCOUNT_USE].filter((k) => r?._meta?.[k] !== undefined).map((k) => [k, r._meta[k]]));
@@ -112,7 +111,7 @@ export function hostResult(r) {
 
 /** Whether a result asking for an account switch may stand: only on the
  * person's own signed call to a first-party plugin. An agent's press, a
- * routine or anything else the Bot might sign is refused, whatever the tool
+ * routine or anything else Buwiz Bot might sign is refused, whatever the tool
  * declares, so a plugin's own opt-in can't bring a switch in. */
 export function mayUseAccount(actor, firstParty) {
   return firstParty === true && actor === "person";
@@ -149,7 +148,7 @@ export function checkOpen(m, o) {
 }
 
 /** A resolve tool's `prompt` answer (15.2): a starter
- *  flow's text, which Rox puts in the composer for the person to edit and
+ *  flow's text, which Buwiz Bot puts in the composer for the person to edit and
  *  send. Commands only; `text` has something other than spaces, tabs and
  *  line breaks and is at most PROMPT_MAX characters (refused, not cut:
  *  a cut prompt says something else). */
@@ -348,7 +347,7 @@ export function createSessions(plugins) {
 
     const { s, rt, perms } = check(envelope, sig);
     const args = envelope.args ?? {};
-    // buwiz.preview: Rox calls the app's own tool for a document; only an app
+    // buwiz.preview: Buwiz Bot calls the app's own tool for a document; only an app
     // with permissions.preview gets the larger result limit
     const preview = envelope.purpose !== undefined;
 

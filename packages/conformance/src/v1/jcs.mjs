@@ -1,9 +1,8 @@
 // v1/jcs.mjs — JSON Canonicalization Scheme (RFC 8785) and I-JSON parsing.
 //
 // Every signed object of the Mini App Protocol (the manifest, session
-// certificates, call envelopes) is signed over its JCS bytes, and Rox's
-// Rust canonicalizer must produce the same bytes (both are tested against
-// test/fixtures/jcs-vectors.json). Signed objects carry integers only, so
+// certificates, call envelopes) is signed over its JCS bytes, and every
+// implementation must produce the same bytes (vectors/jcs.json). Signed objects carry integers only, so
 // the signing form refuses any other number instead of trusting two float
 // printers to agree. `JSON.parse` keeps the last of duplicate keys; I-JSON
 // (RFC 7493) refuses them, so manifests are parsed with parseIJson.

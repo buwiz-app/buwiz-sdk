@@ -1,42 +1,7 @@
-// grammar.mjs — the one grammar for plugin names and `@` tokens.
-//
-//   @<server>:<scope>:<value>
-//     server  [a-z0-9-]+       a connected server's id (mcp_servers.id)
-//     scope   [A-Za-z0-9_-]+   a scope the server's manifest announces
-//     value   \S+              non-empty, no whitespace; may hold `:` and `/`
-//
-// Command names a manifest announces (`/name`) follow the scope grammar.
-// Every parser of these tokens and names on the server goes through here.
-
-const SERVER = "[a-z0-9-]+";
-const NAME = "[A-Za-z0-9_-]+";
-const TOKEN = `@(${SERVER}):(${NAME}):(\\S+)`;
-
-// Checks on the text form; callers parse their input to strings first.
-export const isServerId = (s) => new RegExp(`^${SERVER}$`).test(String(s ?? ""));
-export const isName = (s) => new RegExp(`^${NAME}$`).test(String(s ?? ""));
-
-/** A whole string as one token: {server, scope, value}, or null. */
-export function parseToken(s) {
-  const m = new RegExp(`^${TOKEN}$`).exec(String(s ?? "").trim());
-
-  return m ? { server: m[1], scope: m[2], value: m[3] } : null;
-}
-
-/** Every token in free text (a chat message), in order. */
-export function tokensIn(text) {
-  return [...String(text ?? "").matchAll(new RegExp(TOKEN, "g"))].map((m) => ({
-    server: m[1],
-    scope: m[2],
-    value: m[3],
-  }));
-}
-
-// ── Mini App Protocol v1 (spec section 3) ────────────────────────────────
-// The v1 names, as the spec writes them: ECMAScript sources over the whole
-// string. The broker, the fixture plugin and the tests read this one table
-// (Rox carries the same strings), so host and plugin cannot drift apart.
-// The v0 grammar above stays for v0 servers.
+// grammar.mjs — the names of Mini App Protocol 1.0 (spec section 4), as the
+// spec writes them: ECMAScript sources over the whole string. The runner's
+// host, the probe plugin and the tests read this one table, so host and
+// plugin cannot drift apart.
 export const V1 = Object.freeze({
   pluginId: "^[a-z][a-z0-9-]{0,62}(\\.[a-z][a-z0-9-]{0,62}){2,7}$",
   short: "^[a-z][a-z0-9]{1,15}$",

@@ -1,8 +1,7 @@
-// v1/plugins.mjs — the broker's v1 plugins: install records, processes,
+// v1/plugins.mjs — the host's plugins: install records, processes,
 // restarts (spec 5.4, 6.2, 9, 22).
 //
-// A v1 plugin is a stdio MCP child the broker owns, apart from the v0
-// mcp_servers (mcp.mjs), which keep working as they do. Every spawn runs
+// A plugin is a stdio MCP child the host owns. Every spawn runs
 // the same gate: connect, `buwiz.provision` with the plugin key as the first
 // request (10.2), read `buwiz://manifest`, verify it (6.2), check tools/list
 // against it, and compare it with the install record (6.2 step 11). Only then is
@@ -13,8 +12,7 @@
 // in the keystore and reach the plugin only on its stdin.
 //
 // createPlugins() takes its clock, keystore and timeouts as options so the
-// tests can run the restart policy in milliseconds; broker.mjs builds the
-// one the server uses.
+// restart policy can run in milliseconds.
 import { EventEmitter } from "node:events";
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -23,7 +21,7 @@ import { generate, pubOf } from "./ed.mjs";
 import { V1Error, refuse } from "./errors.mjs";
 import { isObject, isString, kindOf } from "./jcs.mjs";
 import {
-  HOST_PROTOCOL, MANIFEST_URI, ROX_MANIFEST_URI, addedPermissions, checkTools, compareSemver, permsDigest, preRelease, preReleaseMessage, reviewOf, roxMessage, verifyManifest,
+  HOST_PROTOCOL, MANIFEST_URI, addedPermissions, checkTools, compareSemver, permsDigest, reviewOf, verifyManifest,
 } from "./manifest.mjs";
 import { isApproved, loadTrust } from "./trust.mjs";
 
@@ -31,9 +29,9 @@ import { isApproved, loadTrust } from "./trust.mjs";
 // mount at once
 export const FIRST_PARTY = "app.buwiz";
 
-// what the Bot does with a tool result's `_meta` file keys (`buwiz/document`,
-// `buwiz/open_with`, `buwiz/save`), told to every v1 plugin at `initialize` so
-// a newer one can tell an older Bot apart
+// what Buwiz Bot does with a tool result's `_meta` file keys (`buwiz/document`,
+// `buwiz/open_with`, `buwiz/save`), told to every plugin at `initialize` so
+// a plugin can tell which ones the host honors
 export const DOCUMENTS = ["word", "sheet", "image", "pdf", "open_with", "save"];
 export const CLIENT_CAPABILITIES = { experimental: { "buwiz/documents": DOCUMENTS } };
 
@@ -60,24 +58,6 @@ const parse = (s, d) => {
     return d;
   }
 };
-
-/** Why an installed plugin can't start under this host: a Rox-era record
- *  (its tools name `rox.*`, whatever protocol it names), one naming 2.0.x
- *  or 2.1.x (1.0's pre-release numbers), or one older than this host's
- *  major. As rox-broker's `older_protocol`. */
-export function olderProtocol(row, title) {
-  const tools = parse(row.tools, []);
-  const rox = Array.isArray(tools) && tools.some((t) => isString(t?.name) && t.name.startsWith("rox."));
-
-  if (rox) return roxMessage(title);
-
-  if (preRelease(row.protocol)) return preReleaseMessage(title, row.protocol);
-  const major = (p) => (/^\d+\./.test(String(p)) ? Number(String(p).split(".")[0]) : NaN);
-
-  if (!(major(row.protocol) < major(HOST_PROTOCOL))) return null;
-
-  return `${title} ${row.version} (${row.id}) was made for an older Buwiz Bot (mini app protocol ${row.protocol}; this one runs ${HOST_PROTOCOL}), so it can't start. Install its current version, or uninstall it.`;
-}
 
 /** A spawn spec from a request body: stdio only (1). */
 export function spawnSpec(body) {
@@ -221,10 +201,6 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
       try {
         prov = await reserved(conn, "buwiz.provision", { protocol: HOST_PROTOCOL, plugin: id, key: { alg: "ed25519", seed }, pub: pubOf(seed) });
       } catch (e) {
-        // a plugin built for Rox: it serves rox://manifest, or asks for rox.provision
-        const rox = await roxEra(conn, known, /rox\.provision must come first/.test(String(e?.message)));
-
-        if (rox) refuse("protocol_unsupported", roxMessage(rox));
         throw new V1Error("plugin_invalid", `buwiz.provision failed: ${String(e?.message || e).slice(0, 200)}`);
       }
 
@@ -253,28 +229,10 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
     }
   }
 
-  /** A plugin built for Rox (`asked`: it said so, asking for
-   *  rox.provision; else it lists rox://manifest): its title, from the rox
-   *  manifest, the install record or its id. As rox-broker's `rox_era`. */
-  async function roxEra(conn, known, asked) {
-    const listed = await conn.client.listResources().catch(() => ({}));
-
-    if (!asked && !(listed.resources || []).some((r) => r.uri === ROX_MANIFEST_URI)) return null;
-    const read = await conn.client.readResource({ uri: ROX_MANIFEST_URI }).catch(() => ({}));
-    const rox = parse((read.contents || []).find((c) => isString(c.text))?.text, {});
-    const text = (v) => (isString(v) && v ? v.slice(0, 80) : "");
-    const row = known ? rowOf(known) : null;
-
-    return text(rox?.title) || text(row && manifestOf(row).title) || text(rox?.id) || known || "this mini app";
-  }
-
   async function readVerified(conn) {
     const { resources = [] } = await conn.client.listResources();
 
-    if (!resources.some((r) => r.uri === MANIFEST_URI)) {
-      if (resources.some((r) => r.uri === ROX_MANIFEST_URI)) refuse("protocol_unsupported", roxMessage((await roxEra(conn, "", true)) || "this mini app"));
-      refuse("manifest_invalid", "the plugin lists no buwiz://manifest");
-    }
+    if (!resources.some((r) => r.uri === MANIFEST_URI)) refuse("manifest_invalid", "the plugin lists no buwiz://manifest");
     const { contents = [] } = await conn.client.readResource({ uri: MANIFEST_URI });
     const text = contents.find((c) => isString(c.text))?.text;
     const { manifest, sha256 } = verifyManifest(text, trust());
@@ -374,12 +332,6 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
     if (!row?.enabled) return rt.state;
 
     if (rt.conn) return rt.state;
-
-    // a Rox-era record or one naming a pre-release protocol: say so, don't
-    // spawn a plugin that cannot answer buwiz.provision
-    const older = olderProtocol(row, manifestOf(row).title || id);
-
-    if (older) return (setState(rt, "failed", "protocol_unsupported", older), rt.state);
 
     if (rt.state !== "restarting") setState(rt, "starting");
     const seed = await keys.get(id);
@@ -778,13 +730,11 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
   };
 }
 
-/** What the broker reads of its v1 plugins, wherever they run (here, or in
- *  buwiz-broker over the line: plugins-line.mjs): the records in v1_plugins
- *  and the plugin list of GET /v1/host/plugins, with each routine's user
- *  state from routines.mjs. `runtime(id)` is the plugin's live state. */
+/** What the host reads of its plugins: the records in v1_plugins and the plugin list, with each routine's user
+ *  state. `runtime(id)` is the plugin's live state. */
 export function createViews({ db, runtime, trust }) {
   db.exec(SCHEMA);
-  let routineInfo = () => ({}); // routines.mjs: a routine's user state
+  let routineInfo = () => ({}); // a routine's user state
 
   const rowOf = (id) => db.prepare("SELECT * FROM v1_plugins WHERE id=?").get(String(id ?? ""));
   const rows = () => db.prepare("SELECT * FROM v1_plugins ORDER BY created_at").all();
@@ -812,7 +762,7 @@ export function createViews({ db, runtime, trust }) {
       generation: rt.generation,
       plugin_pub: row.plugin_pub,
       // 16.2: an approved plugin of the first-party publisher: its inline
-      // answer cards mount at once in Rox
+      // answer cards mount at once in Buwiz Bot
       first_party: firstParty(row),
       manifest_sha256: row.manifest_sha256,
       apps: (m.apps || []).map((a) => ({ ...a, perms_sha256: permsDigest(a.permissions) })),

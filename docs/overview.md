@@ -64,5 +64,4 @@ tool with `_meta["buwiz/caller"]` saying who asked (spec 14).
 - [testing.md](testing.md): the runner and what it checks.
 
 Section numbers such as spec 4.1 refer to the
-[mini app protocol 1.0 specification](https://github.com/buwiz-app/buwiz-sdk/blob/main/docs/protocol-1.0.md)
-(2.0 and 2.1 were its pre-release numbers).
+[mini app protocol 1.0 specification](https://github.com/buwiz-app/buwiz-sdk/blob/main/docs/protocol-1.0.md).

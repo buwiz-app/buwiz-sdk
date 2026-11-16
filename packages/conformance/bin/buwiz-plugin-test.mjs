@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// sdk/mini-app/bin/buwiz-plugin-test.mjs — the plugin-side conformance checks
+// buwiz-plugin-test.mjs — the plugin-side conformance checks
 // of the Buwiz Mini App Protocol 1.0 (its Appendix C), run against one plugin.
 //
 //   buwiz-plugin-test --command node --args packages/conformance/template/server.mjs \
@@ -8,26 +8,25 @@
 //       --manifest signed.json --key-file test.key
 //   buwiz-plugin-test --keygen test.key
 //
-// The plugin is spawned the way the Bot's broker spawns it, under a Node
-// copy of the broker's v1 plugin host (src/v1/plugins.mjs, sessions.mjs)
-// running in this process on an in-memory database, a file keystore in a
-// temp directory and a trust file written for this run. Nothing here opens
-// a port, reads the Bot's or the broker's data directory, or touches the
-// login Keychain.
+// The plugin is spawned the way Buwiz Bot spawns it, under the host this
+// runner starts to exercise it (src/v1/plugins.mjs, sessions.mjs), running
+// in this process on an in-memory database, a file keystore in a temp
+// directory and a trust file written for this run. Nothing here opens a
+// port, reads Buwiz Bot's data directory, or touches the login Keychain.
 //
 // --sign-with <key file>: reads the manifest the plugin serves, fills each
 // app's fingerprint from the source it serves, signs it with the key (a
 // 0600 file holding a base64url seed) and hands the signed copy to the
 // plugin through the --manifest-env variable (default BUWIZ_PLUGIN_MANIFEST).
 // --manifest <file>: a manifest already signed; its key is trusted from
-// --key-file, else from the trust file BUWIZ_TRUST_FILE names (the Bot's
-// own trust.json; this package ships none).
+// --key-file, else from the trust file BUWIZ_TRUST_FILE names (this
+// package ships none).
 //
 // Trust: by default the run trusts that one key under the manifest's key
 // id and approves the plugin's id, for this run only. With BUWIZ_TRUST_FILE
-// set, the run uses that trust store as it is, the way a broker does: the
+// set, the run uses that trust store as it is, the way Buwiz Bot does: the
 // key must be its key under that id, and the plugin must be on its
-// approved list (else MAN-01 fails with the broker's message). The output
+// approved list (else MAN-01 fails with the host's message). The output
 // says which it was. --first-party marks the run's own key first-party (a
 // first-party publisher's, which native screens need), for that run only.
 //
@@ -45,7 +44,7 @@ import { isV1 } from "../src/grammar.mjs";
 import { isMain } from "../src/v1/cli.mjs";
 import { generate, pubOf, random128, sign, verify } from "../src/v1/ed.mjs";
 import { isObject, isString, parseIJson, signedBytes } from "../src/v1/jcs.mjs";
-import { keystore } from "../src/v1/keystore.mjs";
+import { fileKeystore } from "../src/v1/keystore.mjs";
 import { HOST_PROTOCOL, MANIFEST_URI, NATIVE_ABIS, NATIVE_SCREEN, checkTools, manifestHash, permsDigest, verifyManifest } from "../src/v1/manifest.mjs";
 import { createPlugins, resultData } from "../src/v1/plugins.mjs";
 import { MAX_PER_SECOND, PROMPT_MAX, checkOpen, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
@@ -155,7 +154,7 @@ const expect = (cond, msg) => {
 const codeOf = (p) => p.then(() => "resolved", (e) => e?.code ?? String(e?.message || e));
 const errText = (e) => String(e?.message || e).slice(0, 200);
 
-// a raw MCP client on the plugin, as the broker's own would be, with stderr kept
+// a raw MCP client on the plugin, as Buwiz Bot's would be, with stderr kept
 async function rawClient(spec) {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
@@ -313,7 +312,7 @@ export async function runPluginTest(o) {
   let raw = null;
   let plugins = null;
   const seeds = [];
-  // a real trust store (a broker's): used as it is, approved list and all
+  // a real trust store: used as it is, approved list and all
   const store = process.env.BUWIZ_TRUST_FILE || "";
   let trustFrom = "";
   let trustReport = null;
@@ -407,7 +406,7 @@ export async function runPluginTest(o) {
     const key = generate();
 
     seeds.push(key.seed);
-    // as the broker provisions (plugins.mjs): a plugin may check the host's protocol
+    // as the host provisions (plugins.mjs): a plugin may check the host's protocol
     const provisionArgs = { protocol: HOST_PROTOCOL, plugin: m?.id || "", key: { alg: "ed25519", seed: key.seed }, pub: key.pub };
 
     if (own.length)
@@ -478,7 +477,7 @@ export async function runPluginTest(o) {
     await raw.close();
 
     // ── under the broker's real v1 manager ──────────────────────────────
-    const keys = keystore(`file:${join(dir, "keys")}`);
+    const keys = fileKeystore(join(dir, "keys"));
 
     plugins = createPlugins({ db: new DatabaseSync(":memory:"), keys, logDir, trust });
     const sessions = createSessions(plugins);
@@ -515,11 +514,9 @@ export async function runPluginTest(o) {
   return { plugin: m ? { id: m.id, short: m.short, version: m.version } : null, trust: trustReport, rows, ok: rows.every((r) => r.status !== "fail") };
 }
 
-/** A gate letting at most `max` calls through in any `windowMs`:
- *  `await pace(() => call())`. Each call is stamped when it has settled,
- *  never earlier than the broker counted it, so a slow call (a cold first
- *  one, a loaded machine) can't leave the broker still counting a call the
- *  gate has already let go of. */
+/** A gate letting at most `max` calls start in any `windowMs`:
+ *  `await pace(() => call())`. A call is counted the moment it starts, so
+ *  callers running in parallel are counted too. */
 export function pacer(max, windowMs) {
   const sent = [];
 
@@ -630,7 +627,7 @@ async function nativeChecks(m, a, trust, run, skip) {
   skip("APP-04", `${a.id}: no network globals`, "a native screen has no TSX source; Buwiz Bot builds it");
 }
 
-// A fake Rox: a session key per open, envelopes signed as spec 14.1 says.
+// A fake Buwiz Bot: a session key per open, envelopes signed as spec 14.1 says.
 async function openAs(sessions, m, app) {
   const ks = generate();
   const req = { plugin: m.id, app: app.id, open_id: random128(), ks_pub: ks.pub, perms_sha256: permsDigest(app.permissions), not_after: Date.now() + 3600_000 };
@@ -819,7 +816,7 @@ async function main(argv) {
   if (o.keygen) {
     const pub = keygen(resolvePath(o.keygen));
 
-    console.log(`wrote ${o.keygen} (0600). Public key: ${pub}\nKeep it for local tests only; release manifests are signed with buwiz-sign-manifest --keychain.`);
+    console.log(`wrote ${o.keygen} (0600). Public key: ${pub}\nKeep it for local tests only; sign a release manifest with buwiz-sign-manifest and your publisher key.`);
 
     return 0;
   }

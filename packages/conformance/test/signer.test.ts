@@ -1,5 +1,5 @@
 // buwiz-sign-manifest with a throwaway key: the SDK's own code accepts what it signs,
-// and rejects it after one changed byte. No Keychain, no Bot checkout.
+// and rejects it after one changed byte. No Keychain.
 
 import { afterAll, expect, test } from "bun:test";
 import { createPublicKey, randomBytes, verify } from "node:crypto";
@@ -70,12 +70,12 @@ test("the host code in this package accepts the signed manifest under a trust fi
   const trustFile = join(dir, "trust.json");
   const trust = {
     v: 1,
-    publishers: { "probe-test-01": { publisher: "app.buwiz", alg: "ed25519", public_key: key.public() } },
-    approved_plugins: [{ id: "app.buwiz.probe", publisher_key_id: "probe-test-01" }],
+    publishers: { "probe-test-01": { publisher: "com.example", alg: "ed25519", public_key: key.public() } },
+    approved_plugins: [{ id: "com.example.probe", publisher_key_id: "probe-test-01" }],
   };
   writeFileSync(trustFile, JSON.stringify(trust));
   const text = readFileSync(out, "utf8");
-  expect(verifyManifest(text, loadTrust(trustFile)).manifest.id).toBe("app.buwiz.probe");
+  expect(verifyManifest(text, loadTrust(trustFile)).manifest.id).toBe("com.example.probe");
   expect(() => verifyManifest(text.replace('"Probe"', '"Probf"'), loadTrust(trustFile))).toThrow();
 });
 
@@ -86,13 +86,6 @@ test("a key file others can read is refused, and the seed is never printed", asy
   expect(done.code).toBe(1);
   expect(done.err).toContain("chmod 600");
   expect(done.out + done.err).not.toContain(seed);
-});
-
-test("--keychain refuses a manifest of another key id before it reads the Keychain", async () => {
-  const { manifest } = await setup();
-  const done = await node(SIGNER, [manifest, "--keychain", "some-other-key"]);
-  expect(done.code).toBe(1);
-  expect(done.err).toContain("publisher.key_id is probe-test-01, not some-other-key");
 });
 
 test("without --out the signed manifest goes to stdout", async () => {

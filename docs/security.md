@@ -51,7 +51,7 @@ plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
 
 - [ ] **P5 Side effects need an explicit argument the model cannot supply
       alone.** Filing, sending and paying take a confirmation token that only the
-      app's own UI produces (BIR's "send grant" pattern).
+      app's own UI produces.
 
   ```js
   if (args.confirm !== pendingGrant.get(args.draft)) return fail("permission_denied", "Confirm in the app first.");
@@ -95,5 +95,4 @@ plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
   P2, P5, P6, P8 to P11 are review items.
 
 Section numbers such as spec 4.1 refer to the
-[mini app protocol 1.0 specification](https://github.com/buwiz-app/buwiz-sdk/blob/main/docs/protocol-1.0.md)
-(2.0 and 2.1 were its pre-release numbers).
+[mini app protocol 1.0 specification](https://github.com/buwiz-app/buwiz-sdk/blob/main/docs/protocol-1.0.md).

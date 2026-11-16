@@ -1,6 +1,5 @@
 // The Node modules this package carries (canonical JSON, ed25519, fingerprints, the permissions
-// digest) give the SDK's own answers on vectors/. This is what lets the runner's host copy be
-// replaced one day by the SDK's modules, or by the Rust broker's, without a change in bytes.
+// digest) give the SDK's own answers on vectors/. The bytes the runner's host signs and checks are the SDK's.
 
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";

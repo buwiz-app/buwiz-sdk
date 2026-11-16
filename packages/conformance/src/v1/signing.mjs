@@ -1,12 +1,9 @@
 // v1/signing.mjs — app fingerprints and manifest signatures (11.2, 5.2), as
-// a library. The server imports this, never the sign-manifest CLI: a
-// bundled server is one file, so a CLI's "am I the main script" check would
-// be true in it and run the CLI instead of the server.
+// a library. Import this, never the sign-manifest CLI: a bundled file
+// would run the CLI's "am I the main script" check as its own.
 import { createHash } from "node:crypto";
 import { sign } from "./ed.mjs";
 import { signedBytes } from "./jcs.mjs";
-
-export const PUBLISHER_SERVICE = "dev.goldcoders.publisher";
 
 /** `sha256:<hex>` of an app source's bytes. */
 export const fingerprintOf = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;

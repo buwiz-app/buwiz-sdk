@@ -1,17 +1,17 @@
 # Buwiz conformance tools and the Node plugin template
 
 This package holds two developer tools, `buwiz-plugin-test` (the conformance
-runner) and `buwiz-sign-manifest`, and a plain Node plugin to start from. They
-are the Bot's own tools, moved here as they were: still Node, with a Node copy
-of the broker's v1 plugin host inside (`src/`). A mini app in Rust or
-TypeScript starts from a template (`mini-rs`, `mini-tsx`) instead; this page is
-for the Node plugin and for anyone who runs the tools.
+runner) and `buwiz-sign-manifest`, and a plain Node plugin to start from. The
+runner starts the host it exercises your plugin with (`src/`); that host is
+internal to the runner, not an API. A mini app in Rust or TypeScript starts
+from a template (`mini-rs`, `mini-tsx`) instead; this page is for the Node
+plugin and for anyone who runs the tools.
 
 The tools need Node 22.13 or newer and the two dependencies of this package:
 run `bun install` in the SDK's root once. The commands below are the root's
 scripts (`bun run buwiz-plugin-test …`, `bun run buwiz-sign-manifest …`), which
 run in the SDK's root; or run the files with `node` from anywhere (see
-[testing.md](../../docs/testing.md#set-up)). They need no Bot checkout.
+[testing.md](../../docs/testing.md#set-up)).
 
 Build a plugin for mini app protocol 1.0
 ([the spec](../../docs/protocol-1.0.md)): an MCP server that
@@ -26,7 +26,7 @@ ships apps into Buwiz Bot. Read [the overview](../../docs/overview.md) first
    ```
 
 2. **Rename it.** In `manifest.json` set `id` (reverse DNS, e.g.
-   `app.buwiz.notes`), `short` (2 to 16 lowercase letters and digits,
+   `com.example.notes`), `short` (2 to 16 lowercase letters and digits,
    e.g. `notes`), `title`, `description`, and start `version` at `0.1.0`. Every
    tool name must start with `<short>_` ([docs/manifest.md](../../docs/manifest.md)).
 
@@ -73,22 +73,20 @@ ships apps into Buwiz Bot. Read [the overview](../../docs/overview.md) first
 
    (`--sign-with ~/.config/buwiz/test.key` instead of `--manifest … --key-file …`
    does step 7 for you on every run. To check your plugin against a real
-   trust store, its key id and approved list included, set `BUWIZ_TRUST_FILE`
-   to the Bot's `trust.json`: see [testing.md](../../docs/testing.md#trust).)
+   trust store, its key id and approved list included, set `BUWIZ_TRUST_FILE`:
+   see [testing.md](../../docs/testing.md#trust).)
 
 9. **Go through the security checklist** ([docs/security.md](../../docs/security.md)):
    the runner checks provisioning, certificates, key hygiene and ticket titles;
    authorization (P1), side effects (P5, P6) and text (P9) are yours to review.
 
-10. **Release: the owner signs.** Hand the owner the plugin with its unsigned
-    `manifest.json` and app sources. The owner adds the plugin id to
-    `approved_plugins` in the Bot's `trust.json` and signs with the Goldcoders
-    key from the login Keychain (key id `gc-2026-01`, the manifest's
-    `publisher.key_id`):
+10. **Release.** Sign the manifest with your publisher key (a 0600 key file,
+    the key id in the manifest's `publisher.key_id`), and have the host's
+    trust store list that key and your plugin id:
 
     ```sh
     bun run buwiz-sign-manifest packages/conformance/hello-world/manifest.json \
-      --keychain gc-2026-01 --app hello=packages/conformance/hello-world/hello.tsx \
+      --key-file publisher.key --app hello=packages/conformance/hello-world/hello.tsx \
       --out packages/conformance/hello-world/manifest.json
     ```
 
@@ -102,10 +100,10 @@ ships apps into Buwiz Bot. Read [the overview](../../docs/overview.md) first
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `template/server.mjs`       | The plugin: one tool (`hello_greet`), one resolve tool (`hello_resolve`) for the `/hello` command and the attachable `@hello:friend` scope, tickets                          |
 | `template/hello.tsx`        | The app: full screen and inline 360×160                                                                                                                                      |
-| `template/manifest.json`    | The unsigned manifest; fingerprints are placeholders until step 7                                                                                                            |
-| `lib/buwiz-plugin.mjs`      | `startPlugin`, `ticketStore`, `ok`, `fail`: the reserved tools of spec 7.8, done once                                                                                        |
+| `template/manifest.json`    | The unsigned manifest (an example publisher and key id: use your own); fingerprints are placeholders until step 7                                                            |
+| `lib/buwiz-plugin.mjs`      | `startPlugin`, `ticketStore`, `ok`, `fail`: the reserved tools of spec 10, done once                                                                                         |
 | `bin/buwiz-plugin-test.mjs` | The test runner                                                                                                                                                              |
-| `src/v1/sign-manifest.mjs`  | The manifest signer; `src/` also holds the Node copy of the broker's plugin host the runner uses                                                                             |
+| `src/v1/sign-manifest.mjs`  | The manifest signer; `src/` also holds the host the runner starts to exercise your plugin                                                                                    |
 | `test/`                     | The package's tests (the SDK's own gates run them)                                                                                                                           |
 | `../../docs/`               | [overview](../../docs/overview.md), [manifest](../../docs/manifest.md), [bridge](../../docs/bridge.md), [security](../../docs/security.md), [testing](../../docs/testing.md) |
 

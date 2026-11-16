@@ -2,8 +2,7 @@
 
 Build mini apps for the Buwiz Bot. A mini app is a plugin: a stdio MCP server the Bot spawns, with a signed
 manifest, tools the model and apps call, and screens the Bot shows full screen or inline in the chat. It speaks
-**Mini App Protocol 1.0**, and only 1.0 (the protocol was numbered 2.0 and 2.1 before its public release; a 1.0
-Bot refuses plugins of those, so build against this SDK and release a 1.0 version).
+**Mini App Protocol 1.0**, and only 1.0.
 
 This SDK is the part every mini app shares. You write your manifest, your tools and your screens; the SDK does the
 protocol: MCP over stdio, the reserved `buwiz.*` tools (provision, session certificates, ticket titles,
@@ -24,9 +23,9 @@ To start a new mini app, don't start here: use a template, which already depends
 | `crates/app/`           | Native screens in Rust (crate `buwiz-app`), first-party only: `ScreenDef`, `Bridge`, `Host`, `root`                        |
 | `packages/plugin/`      | The same in TypeScript (`@buwiz/sdk/plugin`): `Plugin`, `Server`, `main`, `Tickets`, `Harness`, the manifest's types       |
 | `packages/app/`         | Types for TSX screens (`@buwiz/sdk/app`): the `buwiz` bridge                                                               |
-| `packages/conformance/` | `buwiz-plugin-test` (the conformance runner), `buwiz-sign-manifest` and a Node plugin template, moved from the Bot         |
-| `docs/`                 | The protocol, its history and the plugin author's guides                                                                   |
-| `vectors/`              | Canonical JSON and signing vectors both halves reproduce byte for byte (`jcs.json` is the Bot's own)                       |
+| `packages/conformance/` | `buwiz-plugin-test` (the conformance runner), `buwiz-sign-manifest` and a Node plugin template                             |
+| `docs/`                 | The protocol and the plugin author's guides                                                                                |
+| `vectors/`              | Canonical JSON and signing vectors both halves reproduce byte for byte (`jcs.json` is the RFC 8785 set Buwiz Bot uses)     |
 | `tools/check-all.sh`    | Every gate, both halves                                                                                                    |
 
 ## Native screens
@@ -142,18 +141,16 @@ behind explicit arguments (P5), and user-facing text that carries no subject dat
 ## The protocol
 
 The specification is [Buwiz Mini App Protocol 1.0](docs/protocol-1.0.md): every name, field, limit, reserved tool,
-check and error code, for plugin authors and host implementers. It renumbers the pre-release drafts
-([history](docs/protocol-history.md)); this SDK implements 1.0.0.
+check and error code, for plugin authors and host implementers. This SDK implements 1.0.0.
 
 The guides cover the manifest's fields and limits, the bridge, the security checklist (P1 to P10) and what the
 conformance runner checks: [overview](docs/overview.md), [manifest](docs/manifest.md), [bridge](docs/bridge.md),
-[security](docs/security.md), [performance](docs/performance.md), [testing](docs/testing.md) and the
-[name changes of 1.0](docs/migrating-to-buwiz-names.md).
+[security](docs/security.md), [performance](docs/performance.md) and [testing](docs/testing.md).
 
 ## Testing a plugin
 
-`packages/conformance` holds two developer tools, still Node (they carry a Node copy of the Bot's plugin host), and
-a plain Node plugin template. They need Node 22.13 or newer and a `bun install` in this repo, and no Bot checkout:
+`packages/conformance` holds two developer tools, written in Node, and a plain Node plugin template. They need
+Node 22.13 or newer and a `bun install` in this repo:
 
 ```
 buwiz-plugin-test --command <binary> --args mcp --manifest signed.json --key-file test.key
@@ -165,8 +162,8 @@ buwiz-sign-manifest manifest.json --key-file test.key [--app <id>=<file>]... [--
 In this repo they are `bun run buwiz-plugin-test …` and `bun run buwiz-sign-manifest …` (scripts run in the root), or
 `node packages/conformance/bin/buwiz-plugin-test.mjs …` and `node packages/conformance/src/v1/sign-manifest.mjs …`
 from any directory. The runner prints a checklist by check ID and exits 1 when one fails. It trusts the test key for
-its own run only; to check against the Bot's real trust list set `BUWIZ_TRUST_FILE` to the Bot's `trust.json` (this
-repo ships none: the Bot owns it). Each template's `tools/bot/conformance.sh` runs it against the built mini app.
+its own run only; to check against a real trust store set `BUWIZ_TRUST_FILE` to its file (this repo ships none).
+Each template's `tools/bot/conformance.sh` runs it against the built mini app.
 [docs/testing.md](docs/testing.md) has every option and what each check ID means. `buwiz-sign-manifest` signs a
 manifest only; a package's `plugin.json` block (`--block buwiz`, above) is still signed by `buwiz-broker sign-manifest`.
 

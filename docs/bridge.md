@@ -117,8 +117,7 @@ export default function Card() {
 ```
 
 A body that scrolls past `max_height` reports the column's height with the
-body's full height in place of the part the scroll shows (BIR's card kit
-does this). Buwiz Bot ignores changes under 2 points and sends at most 8 heights a
+body's full height in place of the part the scroll shows. Buwiz Bot ignores changes under 2 points and sends at most 8 heights a
 second per open, the last always landing; `buwiz.fit` needs no permission
 (it sizes only your own frame) and does nothing full screen. Check for it
 (`buwiz.fit &&`) if the app may run on an older Buwiz Bot.
@@ -183,7 +182,7 @@ routine's query and `resolve` for resolve tools. A bridge call made while the
 agent, not the person, is driving your screen comes as `agent` too, unless the
 tool has `readOnlyHint: true`: your screen's own reads keep working as `app`, and a
 tool you keep for apps refuses its writes. A write reaches your tool only if the
-tool's `_meta["buwiz/audience"]` names `agent`: the Bot holds back every other
+tool's `_meta["buwiz/audience"]` names `agent`: Buwiz Bot holds back every other
 write, unsent, and tells the person why. Each of these calls, reads included,
 carries `press`, the record of the press: `{by: "ai", who}`. So `origin: "app"`
 with a `press` is your screen reading while the AI drives it, not the person's
@@ -194,7 +193,7 @@ A tool that names no `agent` can still take the AI's press, one press at a time,
 if it opts in with `_meta["buwiz/press"] = {approved: true, effect: "post", describe: "<a read>"}`.
 `effect` is `post` or `close`. Anything else, a tool with no `effect`, or a tool whose
 name says file, submit, send, queue, pay, void or reopen, is refused: filing is never the AI's.
-The Bot holds the call unsent and shows the person a card with Not now and Allow.
+Buwiz Bot holds the call unsent and shows the person a card with Not now and Allow.
 `describe` is a read of yours: it gets `{tool, args}` and answers
 `{title, lines}`, what the call will do with its real values, covering every
 argument the call uses. A tool with no such read is refused, and it should refuse
@@ -284,5 +283,4 @@ Buwiz Bot renders your app in Buwiz Bot's own light or dark setting, not the OS'
 | App load / one JS call / heap / stack                      | 10 s / 2 s / 256 MB / 4 MB                                                      |
 
 Section numbers such as spec 4.1 refer to the
-[mini app protocol 1.0 specification](https://github.com/buwiz-app/buwiz-sdk/blob/main/docs/protocol-1.0.md)
-(2.0 and 2.1 were its pre-release numbers).
+[mini app protocol 1.0 specification](https://github.com/buwiz-app/buwiz-sdk/blob/main/docs/protocol-1.0.md).

@@ -1,5 +1,5 @@
 // v1/cli.mjs — whether a module is the script node was started with, for
-// the v1 command-line tools (sign-manifest, publisher-keygen,
+// the v1 command-line tools (sign-manifest,
 // buwiz-plugin-test).
 //
 // `process.argv[1]` is the path as typed, made absolute but not resolved

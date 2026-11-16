@@ -1,9 +1,8 @@
 // v1/trust.mjs — the trust store (spec 5.1): which publisher keys sign
 // manifests and which plugins may be installed.
 //
-// The Bot owns the trust list (its server/src/v1/trust.json); this package
-// ships none. BUWIZ_TRUST_FILE names the file to use (every test run writes
-// its own, with a key it generated). The file is read on every use, so an
+// This package ships no trust list. BUWIZ_TRUST_FILE names the file to use
+// (every test run writes its own, with a key it generated). The file is read on every use, so an
 // edit takes effect at the next verification.
 import { readFileSync } from "node:fs";
 import { isObject, isString, parseIJson } from "./jcs.mjs";

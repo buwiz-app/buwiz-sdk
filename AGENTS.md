@@ -14,8 +14,7 @@ mini app uses it.
    `vectors/` is the proof: `jcs.json` is copied unchanged from the Bot (`server/test/fixtures/jcs-vectors.json`),
    and `signing.json` holds outputs both halves reproduce. Change a vector only when the Bot's changes.
 3. **One protocol version.** The SDK implements 1.0 (`docs/protocol-1.0.md`) and refuses everything else. When the
-   protocol moves, the SDK moves; it carries no shims for older names or versions (2.0 and 2.1 were the
-   pre-release numbering of 1.0).
+   protocol moves, the SDK moves; it carries no shims for older names or versions.
 4. **Tokens stay in memory.** An account token the host pushes (`buwiz.account.set`) lives in memory only: never
    logged, written, put in an answer or shown by `Debug`, `JSON.stringify` or `console.log`.
 5. **Standalone.** Nothing imports from the Bot's repo or needs a Bot checkout; the author guides in `docs/` are this
