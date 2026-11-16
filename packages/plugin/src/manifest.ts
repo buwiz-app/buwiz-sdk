@@ -27,8 +27,8 @@ export const NATIVE_ABI = 1;
 /** The variable naming the signed manifest to serve. */
 export const MANIFEST_ENV = "BUWIZ_PLUGIN_MANIFEST";
 
-// The manifest's shape. The full rules and limits are the Bot's
-// server/sdk/mini-app/docs/manifest.md; the conformance runner checks them.
+// The manifest's shape. The full rules and limits are docs/manifest.md;
+// the conformance runner (packages/conformance) checks them.
 
 export interface Manifest {
   protocol: typeof PROTOCOL;

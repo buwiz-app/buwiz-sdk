@@ -1,0 +1,19 @@
+{
+  "name": "@buwiz/conformance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Developer tools for Buwiz Bot mini apps: buwiz-plugin-test (the conformance runner) and buwiz-sign-manifest",
+  "license": "Apache-2.0",
+  "bin": {
+    "buwiz-plugin-test": "bin/buwiz-plugin-test.mjs",
+    "buwiz-sign-manifest": "src/v1/sign-manifest.mjs"
+  },
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "esbuild": "^0.28.2"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
