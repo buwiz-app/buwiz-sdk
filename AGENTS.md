@@ -11,7 +11,7 @@ mini app uses it.
    commit, with a test in each (`crates/plugin/tests/server.rs` and `packages/plugin/test/server.test.ts`
    run the same cases).
 2. **The bytes are the Bot's.** Canonical JSON, signatures, fingerprints and digests must equal the broker's.
-   `vectors/` is the proof: `jcs.json` is copied unchanged from the Bot (`server/test/fixtures/jcs-vectors.json`),
+   `vectors/` is the proof: `jcs.json` holds the same vectors as the Bot's (`broker/buwiz-protocol/src/jcs-vectors.json`),
    and `signing.json` holds outputs both halves reproduce. Change a vector only when the Bot's changes.
 3. **One protocol version.** The SDK implements 1.0 (`docs/protocol-1.0.md`) and refuses everything else. When the
    protocol moves, the SDK moves; it carries no shims for older names or versions.

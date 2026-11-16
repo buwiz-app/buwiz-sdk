@@ -1,8 +1,7 @@
 //! The shared vectors (`vectors/`) that the Rust and TypeScript halves of
 //! the SDK must both reproduce byte for byte:
 //!
-//! - `jcs.json`: RFC 8785 text, copied from the Bot
-//!   (`server/test/fixtures/jcs-vectors.json`);
+//! - `jcs.json`: RFC 8785 text, the same vectors the Bot checks;
 //! - `signing.json`: a provisioned key's public key, a session certificate
 //!   and its signature, an app fingerprint and a permissions digest.
 
