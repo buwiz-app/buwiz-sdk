@@ -140,7 +140,7 @@ test(
   MINUTE,
 );
 
-test("the pacer counts a call when it starts: parallel callers never exceed the limit in a window", async () => {
+test("the pacer counts a call from the moment it starts: parallel callers never exceed the limit in a window", async () => {
   const window = 200;
   const pace = pacer(5, window);
   const starts: number[] = [];
@@ -156,6 +156,63 @@ test("the pacer counts a call when it starts: parallel callers never exceed the 
   expect(starts.length).toBe(15);
   for (const t of starts) expect(starts.filter((u) => u >= t && u < t + window).length).toBeLessThanOrEqual(5);
 });
+
+test("the pacer keeps sequential calls inside a host that counts each call when it arrives", async () => {
+  // the host's own limit: `max` arrivals in any `window`, counted when a call reaches it
+  const window = 200;
+  const max = 5;
+  const arrived: number[] = [];
+  let refused = 0;
+  const host = async (latency: number) => {
+    await new Promise((r) => setTimeout(r, latency));
+    const now = Date.now();
+    while (arrived.length && now - arrived[0]! >= window) arrived.shift();
+    if (arrived.length >= max) refused += 1;
+    else arrived.push(now);
+  };
+  const pace = pacer(max, window);
+  // the first call is slow to arrive and the rest are quick: a count taken when a call
+  // starts would free the first place before the host's own window for it has ended
+  for (let i = 0; i < 12; i += 1) await pace(() => host(i === 0 ? 80 : 0));
+  expect(refused).toBe(0);
+});
+
+test("a caller waiting on running calls wakes when one settles, and a place frees one window later", async () => {
+  const window = 100;
+  const pace = pacer(2, window);
+  const release: (() => void)[] = [];
+  const hold = () => new Promise<void>((r) => release.push(r));
+  const first = pace(hold);
+  const second = pace(hold);
+  let started = 0;
+  const third = pace(async () => {
+    started = Date.now();
+  });
+  // both places are running: the third caller has no time to wait for, only a settle
+  await new Promise((r) => setTimeout(r, 150));
+  expect(started).toBe(0);
+  const settled = Date.now();
+  release[0]!();
+  await first;
+  await third;
+  expect(started - settled).toBeGreaterThanOrEqual(window);
+  expect(started - settled).toBeLessThan(window + 150);
+  release[1]!();
+  await second;
+});
+
+test(
+  "the real host refuses no call of a plugin with more tools than fit in one second",
+  async () => {
+    const key = (await keygen(tempDir())).path;
+    const json = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_TOOLS=50"), "--json"]);
+    const rows = (JSON.parse(json.out) as { rows: Row[] }).rows;
+    expect(rows.filter((r) => r.status === "fail")).toEqual([]);
+    // one signed call per permitted tool: probe_list and the fifty more
+    expect(rows.filter((r) => r.id === "BRG-03" && r.status === "pass").length).toBeGreaterThanOrEqual(51);
+  },
+  MINUTE,
+);
 
 test(
   "the runner fails a blank prompt with the check INV-10",

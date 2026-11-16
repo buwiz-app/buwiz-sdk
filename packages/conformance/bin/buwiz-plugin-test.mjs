@@ -47,7 +47,7 @@ import { isObject, isString, parseIJson, signedBytes } from "../src/v1/jcs.mjs";
 import { fileKeystore } from "../src/v1/keystore.mjs";
 import { HOST_PROTOCOL, MANIFEST_URI, NATIVE_ABIS, NATIVE_SCREEN, checkTools, manifestHash, permsDigest, verifyManifest } from "../src/v1/manifest.mjs";
 import { createPlugins, resultData } from "../src/v1/plugins.mjs";
-import { MAX_PER_SECOND, PROMPT_MAX, checkOpen, checkPrompt, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
+import { MAX_PER_SECOND, PROMPT_MAX, RATE_WINDOW_MS, checkOpen, checkPrompt, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
 import { fingerprintOf, signManifest } from "../src/v1/sign-manifest.mjs";
 import { TRUST_FILE, isApproved, loadTrust } from "../src/v1/trust.mjs";
 import { newTicket } from "../lib/buwiz-plugin.mjs";
@@ -573,23 +573,51 @@ export async function runPluginTest(o) {
   return { plugin: m ? { id: m.id, short: m.short, version: m.version } : null, trust: trustReport, rows, ok: rows.every((r) => r.status !== "fail") };
 }
 
-/** A gate letting at most `max` calls start in any `windowMs`:
- *  `await pace(() => call())`. A call is counted the moment it starts, so
- *  callers running in parallel are counted too. */
-export function pacer(max, windowMs) {
-  const started = [];
+/** A gate that keeps a caller inside a host's limit of `max` calls in any
+ *  `windowMs`: `await pace(() => call())`. A call holds its place from the
+ *  moment it starts until `windowMs` after it settles. The host counts a call
+ *  when it arrives, which is between those two moments, so the host's window
+ *  for a call has always ended when its place here is free. Callers running
+ *  in parallel are counted too. A call that never settles keeps its place, so
+ *  give every call its own time limit. `now` is the clock, the host's when it
+ *  has one of its own. */
+export function pacer(max, windowMs, now = Date.now) {
+  // one entry per held place: `at` is when it frees, Infinity while its call runs
+  let held = [];
+  // callers waiting for a running call to settle
+  let waiting = [];
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   return async (fn) => {
     for (;;) {
-      while (started.length && Date.now() - started[0] >= windowMs) started.shift();
+      const t = now();
 
-      if (started.length < max) break;
-      await new Promise((r) => setTimeout(r, windowMs - (Date.now() - started[0]) + 5));
+      held = held.filter((place) => place.at > t);
+
+      if (held.length < max) break;
+
+      const next = Math.min(...held.map((place) => place.at));
+
+      // every place still running: wait for one to settle, not for a time
+      if (next === Infinity) await new Promise((r) => waiting.push(r));
+      else await sleep(next - t + 1);
     }
 
-    started.push(Date.now());
+    const place = { at: Infinity };
 
-    return fn();
+    held.push(place);
+
+    try {
+      return await fn();
+    } finally {
+      place.at = now() + windowMs;
+
+      const woken = waiting;
+
+      waiting = [];
+      for (const wake of woken) wake();
+    }
   };
 }
 
@@ -766,7 +794,7 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 
     if (!open) continue;
     let first = null;
-    const pace = pacer(MAX_PER_SECOND, 1000);
+    const pace = pacer(MAX_PER_SECOND, RATE_WINDOW_MS);
 
     for (const tool of a.permissions.tools)
       await run("BRG-03", `${a.id}: a signed call of ${tool} reaches the plugin and is answered`, async () => {

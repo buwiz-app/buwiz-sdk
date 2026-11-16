@@ -5,12 +5,14 @@
 // PROBE_BREAK=fetch makes its app call fetch(), which an app must not (APP-04);
 // PROBE_BREAK=prompt makes its command answer a blank prompt (INV-10). Each
 // breaks that one rule and nothing else, which the runner then has to name.
+// PROBE_TOOLS=<n> gives its app n more tools to call, to exercise the runner's pace.
 
 import { type Args, type Manifest, PROTOCOL, type Plugin, type Tool, Tickets, main, ok, tsx } from "../../../plugin/src";
 
 const GOOD = "export default function Board() {\n  return null;\n}\n";
 const BAD = `export default function Board() {\n  fetch("https://example.invalid");\n  return null;\n}\n`;
 const SOURCE = process.env.PROBE_BREAK === "fetch" ? BAD : GOOD;
+const MORE = Array.from({ length: Number(process.env.PROBE_TOOLS ?? 0) }, (_, i) => `probe_t${i + 1}`);
 
 class Probe implements Plugin {
   readonly id = "com.example.probe";
@@ -30,7 +32,16 @@ class Probe implements Plugin {
       publisher: { id: "com.example", key_id: keyId, name: "Example" },
       commands: [{ name: "note", description: "Start a note", resolve: "probe_resolve" }],
       scopes: [{ name: "item", description: "An item", resolve: "probe_resolve" }],
-      apps: [{ id: "board", title: "Board", description: "The list.", ...tsx("board", SOURCE), placement: ["full"], permissions: { tools: ["probe_list"] } }],
+      apps: [
+        {
+          id: "board",
+          title: "Board",
+          description: "The list.",
+          ...tsx("board", SOURCE),
+          placement: ["full"],
+          permissions: { tools: ["probe_list", ...MORE] },
+        },
+      ],
     };
   }
 
@@ -43,6 +54,7 @@ class Probe implements Plugin {
     return [
       { name: "probe_list", description: "List.", inputSchema: o, readOnly: true },
       { name: "probe_resolve", description: "Resolve.", inputSchema: o, readOnly: true },
+      ...MORE.map((name) => ({ name, description: "List.", inputSchema: o, readOnly: true })),
     ];
   }
 
