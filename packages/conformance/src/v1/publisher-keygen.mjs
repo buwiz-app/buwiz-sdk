@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // v1/publisher-keygen.mjs — make a publisher signing key (spec 5.1, 5.2).
 //
-//   node src/v1/publisher-keygen.mjs gc-2026-01 [--publisher app.buwiz]
-//   node src/v1/publisher-keygen.mjs gc-2026-01 --public   # the key the Keychain holds
+//   node packages/conformance/src/v1/publisher-keygen.mjs gc-2026-01 [--publisher app.buwiz]
+//   node packages/conformance/src/v1/publisher-keygen.mjs gc-2026-01 --public   # the key the Keychain holds
 //
 // Generates an ed25519 key, stores the seed in the macOS login Keychain
 // (service dev.goldcoders.publisher, account = key id) through

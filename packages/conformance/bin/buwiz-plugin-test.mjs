@@ -2,24 +2,26 @@
 // sdk/mini-app/bin/buwiz-plugin-test.mjs — the plugin-side conformance checks
 // of the Buwiz Mini App Protocol 1.0 (its Appendix C), run against one plugin.
 //
-//   npm run plugin-test -- --command node --args sdk/mini-app/template/server.mjs \
-//       --sign-with ~/.config/rox/test.key
-//   npm run plugin-test -- --command node --args path/server.mjs \
-//       --manifest signed.json --key-file ~/.config/rox/test.key
-//   npm run plugin-test -- --keygen ~/.config/rox/test.key
+//   buwiz-plugin-test --command node --args packages/conformance/template/server.mjs \
+//       --sign-with test.key
+//   buwiz-plugin-test --command ./my-plugin --args mcp \
+//       --manifest signed.json --key-file test.key
+//   buwiz-plugin-test --keygen test.key
 //
-// The plugin is spawned the way Rox's broker spawns it, under the broker's
-// real v1 manager (src/v1/plugins.mjs, sessions.mjs) running in this
-// process on an in-memory database, a file keystore in a temp directory
-// and a trust file written for this run. Nothing here opens a port, reads
-// Rox's or the broker's data directory, or touches the login Keychain.
+// The plugin is spawned the way the Bot's broker spawns it, under a Node
+// copy of the broker's v1 plugin host (src/v1/plugins.mjs, sessions.mjs)
+// running in this process on an in-memory database, a file keystore in a
+// temp directory and a trust file written for this run. Nothing here opens
+// a port, reads the Bot's or the broker's data directory, or touches the
+// login Keychain.
 //
 // --sign-with <key file>: reads the manifest the plugin serves, fills each
 // app's fingerprint from the source it serves, signs it with the key (a
 // 0600 file holding a base64url seed) and hands the signed copy to the
 // plugin through the --manifest-env variable (default BUWIZ_PLUGIN_MANIFEST).
 // --manifest <file>: a manifest already signed; its key is trusted from
-// --key-file, else from the shipped src/v1/trust.json.
+// --key-file, else from the trust file BUWIZ_TRUST_FILE names (the Bot's
+// own trust.json; this package ships none).
 //
 // Trust: by default the run trusts that one key under the manifest's key
 // id and approves the plugin's id, for this run only. With BUWIZ_TRUST_FILE
@@ -335,12 +337,14 @@ export async function runPluginTest(o) {
     } else {
       const signed = parseIJson(readFileSync(o.manifest, "utf8"));
       const keyId = signed?.publisher?.key_id;
+
+      if (!o.keyFile && !store) throw new Error("--manifest needs --key-file, or BUWIZ_TRUST_FILE naming the trust file that holds the manifest's key");
       const pubs = o.keyFile ? { [keyId]: pubOf(readKey(o.keyFile)) } : Object.fromEntries([...loadTrust(TRUST_FILE()).publishers].map(([k, p]) => [k, p.public_key]));
 
       writeFileSync(manifestFile, readFileSync(o.manifest));
 
       if (!store) writeTrust(trustFile, pubs, signed, o.firstParty);
-      trustFrom = o.keyFile ? "--key-file" : "the shipped src/v1/trust.json";
+      trustFrom = o.keyFile ? "--key-file" : "BUWIZ_TRUST_FILE";
     }
 
     if (store) writeFileSync(trustFile, readFileSync(store));
@@ -815,7 +819,7 @@ async function main(argv) {
   if (o.keygen) {
     const pub = keygen(resolvePath(o.keygen));
 
-    console.log(`wrote ${o.keygen} (0600). Public key: ${pub}\nKeep it for local tests only; release manifests are signed with --keychain.`);
+    console.log(`wrote ${o.keygen} (0600). Public key: ${pub}\nKeep it for local tests only; release manifests are signed with buwiz-sign-manifest --keychain.`);
 
     return 0;
   }

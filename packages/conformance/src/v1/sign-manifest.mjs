@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // v1/sign-manifest.mjs — sign a plugin manifest with a publisher key (5.2).
 //
-//   node src/v1/sign-manifest.mjs manifest.json --keychain gc-2026-01 \
+//   buwiz-sign-manifest manifest.json --keychain gc-2026-01 \
 //        --app forms=dist/forms.tsx --app calendar=dist/calendar.tsx [--out signed.json]
-//   node src/v1/sign-manifest.mjs manifest.json --key-file test.key ...
+//   buwiz-sign-manifest manifest.json --key-file test.key ...
 //
 // Fills each named app's `fingerprint` from its source bytes (11.2), then
 // `signature` = ed25519 over the JCS bytes of the manifest without it. The
@@ -45,7 +45,7 @@ function cli(argv) {
     } else opts.file = a;
   }
 
-  if (!opts.file || (!opts.keyFile === !opts.keychain)) throw new Error("usage: sign-manifest.mjs <manifest.json> (--key-file <path> | --keychain <key_id>) [--app <id>=<file>]... [--out <file>]");
+  if (!opts.file || (!opts.keyFile === !opts.keychain)) throw new Error("usage: buwiz-sign-manifest <manifest.json> (--key-file <path> | --keychain <key_id>) [--app <id>=<file>]... [--out <file>]");
 
   const m = parseIJson(readFileSync(opts.file, "utf8"));
 
@@ -64,6 +64,6 @@ if (isMain(import.meta.url))
   try {
     cli(process.argv.slice(2));
   } catch (e) {
-    console.error(`sign-manifest: ${String(e?.message || e).slice(0, 300)}`);
+    console.error(`buwiz-sign-manifest: ${String(e?.message || e).slice(0, 300)}`);
     process.exit(1);
   }

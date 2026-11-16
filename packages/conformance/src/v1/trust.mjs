@@ -1,18 +1,16 @@
 // v1/trust.mjs — the trust store (spec 5.1): which publisher keys sign
 // manifests and which plugins may be installed.
 //
-// Rox ships src/v1/trust.json (trust.json beside the bundled server);
-// BUWIZ_TRUST_FILE points at another file (every test run writes its own,
-// with a key it generated). The file is read on every use, so an edit
-// takes effect at the next verification and at the next look at the agent
-// surface (approved-plugin text, 18.3).
+// The Bot owns the trust list (its server/src/v1/trust.json); this package
+// ships none. BUWIZ_TRUST_FILE names the file to use (every test run writes
+// its own, with a key it generated). The file is read on every use, so an
+// edit takes effect at the next verification.
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { isObject, isString, parseIJson } from "./jcs.mjs";
 import { fromB64u } from "./ed.mjs";
 
-export const TRUST_FILE = () => process.env.BUWIZ_TRUST_FILE || join(dirname(fileURLToPath(import.meta.url)), "trust.json");
+/** The trust file BUWIZ_TRUST_FILE names, else "" (there is no shipped one). */
+export const TRUST_FILE = () => process.env.BUWIZ_TRUST_FILE || "";
 
 /** {publishers: Map key_id -> {publisher, public_key, first_party}, approved: [{id,
  *  publisher_key_id}]}. A missing or broken file trusts nothing. */
