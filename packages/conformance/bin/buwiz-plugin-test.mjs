@@ -47,7 +47,17 @@ import { isObject, isString, parseIJson, signedBytes } from "../src/v1/jcs.mjs";
 import { fileKeystore } from "../src/v1/keystore.mjs";
 import { HOST_PROTOCOL, MANIFEST_URI, NATIVE_ABIS, NATIVE_SCREEN, checkTools, manifestHash, permsDigest, verifyManifest } from "../src/v1/manifest.mjs";
 import { createPlugins, resultData } from "../src/v1/plugins.mjs";
-import { MAX_PER_SECOND, PROMPT_MAX, RATE_WINDOW_MS, checkOpen, checkPrompt, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
+import {
+  MAX_PER_SECOND,
+  PROMPT_MAX,
+  RATE_WINDOW_MS,
+  audienceProblem,
+  checkOpen,
+  checkPrompt,
+  createSessions,
+  pressProblem,
+  SOURCE_MAX,
+} from "../src/v1/sessions.mjs";
 import { fingerprintOf, signManifest } from "../src/v1/sign-manifest.mjs";
 import { TRUST_FILE, isApproved, loadTrust } from "../src/v1/trust.mjs";
 import { newTicket } from "../lib/buwiz-plugin.mjs";
@@ -415,6 +425,22 @@ export async function runPluginTest(o) {
         return `${own.length} tools`;
       });
     else skip("MAN-10", "tool names", "the manifest did not verify");
+
+    // the declarations the host reads to keep a tool off the model's list or to take the AI's press
+    await run("MAN-15", "a tool that declares buwiz/press with approved: true can take the AI's press (16.5)", () => {
+      const bad = own.map((t) => [t.name, pressProblem(t)]).filter(([, why]) => why);
+
+      expect(bad.length === 0, bad.map(([name, why]) => `${name}: ${why}`).join("; "));
+
+      return `${own.filter((t) => t._meta?.["buwiz/press"]?.approved === true).length} declared`;
+    });
+    await run("MAN-16", "a tool's buwiz/audience, when present, is an array (16.4)", () => {
+      const bad = own.filter((t) => audienceProblem(t));
+
+      expect(bad.length === 0, `${bad.map((t) => t.name).join(", ")}: buwiz/audience is not an array, so the host keeps the tool off the model's list`);
+
+      return `${own.filter((t) => t._meta?.["buwiz/audience"] !== undefined).length} declared`;
+    });
 
     for (const a of m?.apps || []) await (a.native !== undefined ? nativeChecks(m, a, trust(), run, skip) : appChecks(raw, a, run));
 

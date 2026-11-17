@@ -1142,17 +1142,16 @@ this section defines; other words (for example `"app"`) mean nothing to the host
 the array in three places:
 
 - The model's surface (section 18.2). An array that leaves out `"agent"` (for example `["app"]`) keeps the tool off the
-  surface, and model calls of it are refused. An absent audience, or one that is not an array, leaves the tool on the
-  surface.
+  surface, and model calls of it are refused. An audience that is present but is not an array (a string, an object, a
+  number or `null`) does the same. An absent audience leaves the tool on the surface.
 - An AI's press through an app's screen (section 16.5). A write is open to agents only when the array contains
   `"agent"`. An absent audience is not open.
 - Generated widgets (below). A tool is offered to widgets only when the array contains `"widget"`. An absent audience
   is not offered.
 
-A plugin MUST write the audience as an array: the host reads any other value (for example the string `"app"`) as
-absent, which leaves the tool on the model's surface. A tool that wants the model, or the AI's press, or widgets,
-lists that word explicitly. An app's own calls (the
-person's) do not depend on the audience.
+A plugin MUST write the audience as an array. Any other value (for example the string `"app"`) keeps the tool off the
+model's surface and is open to nobody. A tool that wants the model, or the AI's press, or widgets, lists that word
+explicitly. An app's own calls (the person's) do not depend on the audience.
 
 **Widgets.** A generated widget is a small program the Bot's model writes into a chat. It reads and changes data
 through sources; a plugin offers tools to widgets by marking them `"widget"`:
@@ -1197,10 +1196,12 @@ A tool opts in with:
 | `effect`   | `"post"` or `"close"`. Any other value, or none, is no opt-in.                                          |
 | `describe` | The name of a read-only tool of this plugin that puts the call in plain words (below). MUST be present. |
 
-A tool whose name contains one of the words `file`, `filing`, `submit`, `send`, `queue`, `pay`, `paid`, `void` or
-`reopen` can never opt in, whatever it declares: the AI never presses these. The words of a name are the runs of
-letters and digits in its lowercase form (`ledger_pay_run` has `pay`; `sendmail` has none). The name rule is a
-backstop that matches whole words only (`payment` is not `pay`); it is not the guard. A plugin MUST NOT opt in a
+A tool can never opt in, whatever it declares, when its name has a character outside `a-z`, `A-Z`, `0-9`, `_`, `.`
+and `-`, or when the part of its lowercase name after the first `_` contains any of the letter sequences `file`,
+`filing`, `submit`, `send`, `sent`, `queue`, `pay`, `paid`, `void` or `reopen`. A short name has no `_`, so the
+rule never reads it; a name with no `_` is read whole. The AI never presses these. `ledger_payment_create` contains
+`pay` and is refused. So is `profile_update`, which contains `file`. `sentry_post_note` and `notes_post` contain
+none and can opt in. The name rule is a backstop; it is not the guard. A plugin MUST NOT opt in a
 tool that files, submits, sends, pays, voids or reopens, whatever the tool is called (P5).
 
 **The card.** The host holds the call unsent and reads `describe` with the arguments `{tool, args}` of the held call.
@@ -1282,7 +1283,7 @@ A tool is on the model's surface only when all hold:
 
 - its plugin is enabled, running, and approved for its installed publisher key;
 - the tool is not reserved, not switched off, and starts with `<short>_`;
-- its `buwiz/audience`, if any, includes `"agent"`;
+- its `buwiz/audience` is absent, or is an array that includes `"agent"`;
 - its name does not start with a built-in prefix (`mcp_`, `office_`, `skill_`, `routine_`, `app_`, `bot_`)
   and is not already taken by another tool;
 - in a routine's turn, it is the routine's own plugin's tool or one of the routine's `reads` tools.
@@ -1312,8 +1313,8 @@ on a routine that needs consent (section 19.3).
 It can drive a full-screen app's screen, but only by a named button or a named field: it cannot press an unnamed
 element, a position on the screen, a key or the footer buttons of an inline card. What its press calls reaches a
 plugin as section 16.5 says: a read passes, a write only if the tool is open to agents or opted in and the person said
-yes to that call; a tool whose name has one of the words section 16.5 lists (filing, sending, paying and the
-like) cannot opt in. It cannot press a button of the Bot itself.
+yes to that call; a tool whose name contains one of the letter sequences section 16.5 lists (filing, sending,
+paying and the like) cannot opt in. It cannot press a button of the Bot itself.
 
 ## 19. Routines
 
@@ -1756,23 +1757,25 @@ numbering is an ID not in use, and an ID is never reused for another requirement
 
 ### C.1 Manifest (MAN)
 
-| ID     | Side | Requirement                                                                                                                                              | Section        |
-| ------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| MAN-01 | both | The manifest's signature is ed25519 over JCS and verifies with a trust-store publisher key the plugin id is approved for.                                | 5.2, 6.2       |
-| MAN-02 | both | A byte changed in a signed manifest fails verification with `manifest_invalid`.                                                                          | 5.2, 6.2       |
-| MAN-03 | both | The manifest is an I-JSON object; any other JSON value is refused, not taken as `{}`.                                                                    | 6.2            |
-| MAN-04 | both | A 1.0 host accepts `protocol` `1.0.x` and refuses `1.1.0` and later, `2.0.x`, `2.1.x` and other majors with `protocol_unsupported`; `version` is semver. | 3.3, 6.2       |
-| MAN-05 | both | A non-empty `needs` is refused with `not_supported`; `[]` is accepted.                                                                                   | 6.2, 6.3       |
-| MAN-06 | both | An unknown key in `permissions` is refused; an unknown top-level key is ignored.                                                                         | 3.4, 12        |
-| MAN-07 | both | Every grammar of section 4 holds; each is tested with one valid and one invalid value.                                                                   | 4              |
-| MAN-08 | both | Every manifest limit holds; each is tested at the limit and one over.                                                                                    | 6.3 to 6.9, 24 |
-| MAN-09 | host | A `short` used by another enabled plugin is refused.                                                                                                     | 6.2            |
-| MAN-10 | both | Every tool in `tools/list` but the reserved ones starts with `<short>_`, and every tool the manifest names is in the list.                               | 6.2            |
-| MAN-11 | both | A command named like a built-in (`status`, `messages`) is refused.                                                                                       | 4, 6.5         |
-| MAN-12 | both | An unknown key in a `routines[]` entry, `needs` among them, is refused.                                                                                  | 3.4, 6.7       |
-| MAN-13 | both | `routines[].writes` names the plugin's own tools, each once, never a reserved or `readOnlyHint: true` tool, each in `tools/list`.                        | 6.2, 6.7       |
-| MAN-14 | both | `routines[].params` is a small JSON Schema whose properties follow its rules and are not keys of `query.args`.                                           | 19.2           |
-| MAN-21 | both | An app is a TSX app or a native screen, never both or neither; a native screen is refused under a key that is not first party.                           | 6.8, 11.3      |
+| ID     | Side   | Requirement                                                                                                                                                                           | Section        |
+| ------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| MAN-01 | both   | The manifest's signature is ed25519 over JCS and verifies with a trust-store publisher key the plugin id is approved for.                                                             | 5.2, 6.2       |
+| MAN-02 | both   | A byte changed in a signed manifest fails verification with `manifest_invalid`.                                                                                                       | 5.2, 6.2       |
+| MAN-03 | both   | The manifest is an I-JSON object; any other JSON value is refused, not taken as `{}`.                                                                                                 | 6.2            |
+| MAN-04 | both   | A 1.0 host accepts `protocol` `1.0.x` and refuses `1.1.0` and later, `2.0.x`, `2.1.x` and other majors with `protocol_unsupported`; `version` is semver.                              | 3.3, 6.2       |
+| MAN-05 | both   | A non-empty `needs` is refused with `not_supported`; `[]` is accepted.                                                                                                                | 6.2, 6.3       |
+| MAN-06 | both   | An unknown key in `permissions` is refused; an unknown top-level key is ignored.                                                                                                      | 3.4, 12        |
+| MAN-07 | both   | Every grammar of section 4 holds; each is tested with one valid and one invalid value.                                                                                                | 4              |
+| MAN-08 | both   | Every manifest limit holds; each is tested at the limit and one over.                                                                                                                 | 6.3 to 6.9, 24 |
+| MAN-09 | host   | A `short` used by another enabled plugin is refused.                                                                                                                                  | 6.2            |
+| MAN-10 | both   | Every tool in `tools/list` but the reserved ones starts with `<short>_`, and every tool the manifest names is in the list.                                                            | 6.2            |
+| MAN-11 | both   | A command named like a built-in (`status`, `messages`) is refused.                                                                                                                    | 4, 6.5         |
+| MAN-12 | both   | An unknown key in a `routines[]` entry, `needs` among them, is refused.                                                                                                               | 3.4, 6.7       |
+| MAN-13 | both   | `routines[].writes` names the plugin's own tools, each once, never a reserved or `readOnlyHint: true` tool, each in `tools/list`.                                                     | 6.2, 6.7       |
+| MAN-14 | both   | `routines[].params` is a small JSON Schema whose properties follow its rules and are not keys of `query.args`.                                                                        | 19.2           |
+| MAN-15 | plugin | A tool that declares `buwiz/press` with `approved: true` can take the AI's press: its name passes the rule of section 16.5, `effect` is `post` or `close`, and `describe` is present. | 16.5           |
+| MAN-16 | plugin | A tool's `buwiz/audience`, when present, is an array.                                                                                                                                 | 16.4           |
+| MAN-21 | both   | An app is a TSX app or a native screen, never both or neither; a native screen is refused under a key that is not first party.                                                        | 6.8, 11.3      |
 
 ### C.2 Apps (APP)
 

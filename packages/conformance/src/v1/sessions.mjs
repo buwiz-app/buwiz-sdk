@@ -74,16 +74,54 @@ export function pressOf(actor, press) {
 }
 
 const PRESS_EFFECTS = ["post", "close"];
-const NEVER_PRESSED = ["file", "filing", "submit", "send", "queue", "pay", "paid", "void", "reopen"];
+const NEVER_PRESSED = ["file", "filing", "submit", "send", "sent", "queue", "pay", "paid", "void", "reopen"];
+
+/** Why a tool name can never opt in to the AI's press (16.5), or undefined: a character outside
+ *  `a-z A-Z 0-9 _ . -`, or one of the letter sequences the AI never presses in the part after the
+ *  first `_` (the short name has no `_`; a name with none is read whole). */
+export function pressNameBar(name) {
+  const text = String(name ?? "");
+
+  if (!/^[A-Za-z0-9_.-]*$/.test(text)) return "its name has a character outside a-z, 0-9, _ . -";
+  const lower = text.toLowerCase();
+  const at = lower.indexOf("_");
+  const part = at < 0 ? lower : lower.slice(at + 1);
+  const word = NEVER_PRESSED.find((w) => part.includes(w));
+
+  return word ? `its name contains "${word}" after the short name` : undefined;
+}
 
 /** Whether `tool` opted in to the AI's press (16.5): `buwiz/press` with `approved: true` and an
- *  effect of post or close, on a tool whose name has none of the words the AI never presses. */
+ *  effect of post or close, on a tool whose name [`pressNameBar`] lets through. */
 export function pressOptedIn(tool) {
   const opt = tool?._meta?.["buwiz/press"];
-  const words = String(tool?.name ?? "")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/);
-  return isObject(opt) && opt.approved === true && PRESS_EFFECTS.includes(opt.effect) && !words.some((w) => NEVER_PRESSED.includes(w));
+
+  return isObject(opt) && opt.approved === true && PRESS_EFFECTS.includes(opt.effect) && pressNameBar(tool?.name) === undefined;
+}
+
+/** Why a tool that declares `buwiz/press` with `approved: true` still can't take the AI's press, or
+ *  undefined: it declares none, or the declaration works (16.5). */
+export function pressProblem(tool) {
+  const opt = tool?._meta?.["buwiz/press"];
+
+  if (!isObject(opt) || opt.approved !== true) return undefined;
+  const bar = pressNameBar(tool?.name);
+
+  if (bar) return bar;
+
+  if (!PRESS_EFFECTS.includes(opt.effect)) return 'its effect is not "post" or "close"';
+
+  if (typeof opt.describe !== "string" || opt.describe === "") return "it names no describe tool";
+
+  return undefined;
+}
+
+/** A tool's `buwiz/audience` that is present but not an array (16.4): the host keeps the tool off
+ *  the model's list. Undefined when it is absent or an array. */
+export function audienceProblem(tool) {
+  const audience = tool?._meta?.["buwiz/audience"];
+
+  return audience === undefined || Array.isArray(audience) ? undefined : "its buwiz/audience is not an array";
 }
 
 /** `sha256:` over the JCS bytes of `args`: what a person's yes to a press covers. */
@@ -129,16 +167,24 @@ export function stripMeta(r) {
 
 // the `_meta` key a first-party plugin's tool answers with to switch the active account: {account, label}
 const ACCOUNT_USE = "buwiz/account_use";
+// stands in for it when the switch is not passed on
+const ACCOUNT_USE_REFUSED = "buwiz/account_use_refused";
 
 /** A tool result as Buwiz Bot gets it from an app's call: stripped, but for
  * `_meta["buwiz/document"]`, `buwiz/open_with`, `buwiz/save` and
  * `buwiz/account_use`, the keys Buwiz Bot itself acts on; the app and the
- * model still never see them (16.6). */
-export function hostResult(r) {
+ * model still never see them (16.6). When `may` is false the account switch
+ * is not passed on: `buwiz/account_use_refused` stands in its place. */
+export function hostResult(r, may = true) {
   const out = stripMeta(r);
   const kept = Object.fromEntries(
     ["buwiz/document", "buwiz/open_with", "buwiz/save", ACCOUNT_USE].filter((k) => r?._meta?.[k] !== undefined).map((k) => [k, r._meta[k]]),
   );
+
+  if (!may && ACCOUNT_USE in kept) {
+    delete kept[ACCOUNT_USE];
+    kept[ACCOUNT_USE_REFUSED] = true;
+  }
 
   if (Object.keys(kept).length) out._meta = kept;
 
@@ -146,11 +192,20 @@ export function hostResult(r) {
 }
 
 /** Whether a result asking for an account switch may stand: only on the
- * person's own signed call to a first-party plugin. An agent's press, a
- * routine or anything else Buwiz Bot might sign is refused, whatever the tool
- * declares, so a plugin's own opt-in can't bring a switch in. */
+ * person's own signed call to a first-party plugin. For an agent's press, a
+ * routine or anything else Buwiz Bot might sign, the result goes on without
+ * the switch, whatever the tool declares, so a plugin's own opt-in can't
+ * bring a switch in. */
 export function mayUseAccount(actor, firstParty) {
   return firstParty === true && actor === "person";
+}
+
+/** The result a signed call answers with: `r` as [`hostResult`] has it. `firstParty` is a function,
+ *  asked only when `r` asks for a switch. */
+export function callAnswer(r, actor, firstParty) {
+  const asks = r?._meta?.[ACCOUNT_USE] !== undefined;
+
+  return hostResult(r, !asks || mayUseAccount(actor, firstParty()));
 }
 
 /** An open request a plugin made (resolve `open`, `_meta["buwiz/open"]`)
@@ -464,10 +519,8 @@ export function createSessions(plugins) {
     if (resultBytes(r) > max)
       refuse("result_too_large", `${envelope.tool}'s result is over ${preview ? `${Math.round((max / 1048576) * 10) / 10} MiB` : "1 MiB"}`);
 
-    if (r?._meta?.[ACCOUNT_USE] !== undefined && !mayUseAccount(envelope.actor, plugins.firstParty(plugins.rowOf(s.plugin))))
-      refuse("permission_denied", "only a person's own press in a first-party plugin switches accounts");
-
-    return { ok: true, result: hostResult(r) };
+    // the tool has run and its result stands; a caller that may not switch accounts gets it without the switch
+    return { ok: true, result: callAnswer(r, envelope.actor, () => plugins.firstParty(plugins.rowOf(s.plugin))) };
   }
 
   // ── tickets, resolve, app source ─────────────────────────────────────
