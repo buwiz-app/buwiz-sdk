@@ -1,6 +1,6 @@
 # Security checklist for plugin authors
 
-Buwiz Bot guarantees H1 to H14 of spec 23.1: an app reaches only the bridge, every
+Buwiz Bot guarantees H1 to H16 of spec 23.1: an app reaches only the bridge, every
 call is signed and checked, consent is asked where spec 17 says. Your
 plugin owns the rest: P1 to P12 of spec 23.2. Tick each before release.
 

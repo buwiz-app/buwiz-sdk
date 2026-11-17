@@ -26,7 +26,7 @@ test(
   async () => {
     const key = (await keygen(tempDir())).path;
     const done = await node(RUNNER, ["--command", process.execPath, "--args", join(TEMPLATE, "server.mjs"), "--sign-with", key]);
-    expect(done.out.trimEnd().split("\n").pop()).toMatch(/^\d+ pass, 0 fail, 0 skipped: conforms$/);
+    expect(done.out.trimEnd().split("\n").pop()).toMatch(/^\d+ pass, 0 fail, 1 skipped: conforms$/); // the one skip is BRG-20: the template returns no badge
     expect(done.code).toBe(0);
   },
   MINUTE,

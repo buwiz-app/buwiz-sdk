@@ -82,19 +82,23 @@ test(
 );
 
 test(
-  "a badge a tool returns passes BRG-20 when it is well formed and fails it when it is not",
+  "BRG-20 passes a well formed badge, fails a malformed one and is skipped, with its reason, when no result carries one",
   async () => {
     const key = (await keygen(tempDir())).path;
-    const good = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_BADGE=1"), "--json"]);
-    const goodRows = (JSON.parse(good.out) as { rows: Row[] }).rows;
-    expect(goodRows.filter((r) => r.status === "fail")).toEqual([]);
-    expect(goodRows.filter((r) => r.id === "BRG-20" && r.status === "pass").length).toBe(1);
+    const rows = async (...env: string[]) => (JSON.parse((await node(RUNNER, [...probe("--sign-with", key, ...env), "--json"])).out) as { rows: Row[] }).rows;
+    const good = await rows();
+    expect(good.filter((r) => r.status === "fail")).toEqual([]);
+    expect(good.filter((r) => r.id === "BRG-20").map((r) => r.status)).toEqual(["pass"]);
 
     const bad = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_BREAK=badge"), "--json"]);
     const failed = (JSON.parse(bad.out) as { rows: Row[] }).rows.filter((r) => r.status === "fail");
     expect(bad.code).toBe(1);
     expect(failed.map((r) => r.id)).toEqual(["BRG-20"]);
     expect(failed[0]?.note).toContain("dot is not red, amber, green or none");
+
+    const none = (await rows("--env", "PROBE_BADGE=none")).filter((r) => r.id === "BRG-20");
+    expect(none.map((r) => r.status)).toEqual(["skip"]);
+    expect(none[0]?.note).toContain("no tool result");
   },
   MINUTE,
 );

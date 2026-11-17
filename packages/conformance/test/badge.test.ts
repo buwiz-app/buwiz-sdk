@@ -1,52 +1,30 @@
-// A tool result's buwiz/badge as the runner's host reads it (spec 16.4): what makes one malformed, and
-// that it is stripped with the rest of _meta like every key it does not act on. The Bot's broker
-// reads it with the same rules.
+// A tool result's buwiz/badge as the runner's host reads it (spec 16.4), against the vectors every
+// side shares (vectors/badge.json: the Bot's broker, the plugin libraries and this host), and that it
+// is stripped with the rest of _meta.
 
 import { expect, test } from "bun:test";
-import { BADGE_TEXT_MAX, badgeProblem, callAnswer, hostResult } from "../src/v1/sessions.mjs";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { BADGE_TEXT_MAX, badgeOf, badgeProblem, callAnswer, hostResult } from "../src/v1/sessions.mjs";
 
-const M = { apps: [{ id: "board" }, { id: "card" }] };
-const TICKET = "tkt_0123456789ABCDEFGHJKMNPQRS";
+const V = JSON.parse(readFileSync(join(import.meta.dir, "../../../vectors/badge.json"), "utf8")) as {
+  apps: string[];
+  cases: { badge: unknown; ok: boolean; why?: string }[];
+};
+const M = { apps: V.apps.map((id) => ({ id })) };
 
-test("a well formed badge has no problem", () => {
-  for (const b of [
-    { app: "board", dot: "red", text: "2 due" },
-    { app: "board", dot: "green" },
-    { app: "card", text: "18h" },
-    { app: "board", text: "  ok \n" },
-    { app: "board", text: "12345678" },
-    { app: "board", text: "ÅÅÅÅÅÅÅÅ" },
-    { app: "board", dot: "none", text: "" },
-    { app: "board", clear: true },
-    { app: "board", clear: true, ticket: TICKET },
-    { app: "board", dot: "red", ticket: TICKET },
-  ])
-    expect(badgeProblem(M, b), JSON.stringify(b)).toBeNull();
+test("every shared vector is well formed or malformed for its reason", () => {
+  expect(V.cases.length).toBeGreaterThan(40);
+  for (const c of V.cases) expect(badgeProblem(M, c.badge), JSON.stringify(c.badge)).toBe(c.ok ? null : c.why!);
   expect(BADGE_TEXT_MAX).toBe(8);
 });
 
-test("each malformed badge says why", () => {
-  const bad: [unknown, string][] = [
-    ["red", "it is not an object"],
-    [{ dot: "red" }, "app is not a string"],
-    [{ app: "other", dot: "red" }, "app is not an app of this plugin"],
-    [{ app: "board", dot: "blue" }, "dot is not red, amber, green or none"],
-    [{ app: "board", dot: 3 }, "dot is not red, amber, green or none"],
-    [{ app: "board", text: "123456789" }, "text is over 8 characters"],
-    [{ app: "board", text: "ÅÅÅÅÅÅÅÅÅ" }, "text is over 8 characters"],
-    [{ app: "board", text: "a\nb" }, "text is not one line of plain characters"],
-    [{ app: "board", text: "a\u0007b" }, "text is not one line of plain characters"],
-    [{ app: "board", text: "a\u2028b" }, "text is not one line of plain characters"],
-    [{ app: "board", text: 7 }, "text is not a string"],
-    [{ app: "board", dot: "red", ticket: "tkt_x" }, "ticket breaks the ticket grammar"],
-    [{ app: "board", dot: "red", ticket: 4 }, "ticket breaks the ticket grammar"],
-    [{ app: "board" }, "it sets neither dot nor text"],
-    [{ app: "board", clear: true, dot: "red" }, "a clear carries only app and ticket"],
-    [{ app: "board", clear: true, text: "" }, "a clear carries only app and ticket"],
-    [{ app: "board", clear: false }, "clear is not true"],
-    [{ app: "board", clear: "yes" }, "clear is not true"],
-  ];
-  for (const [b, why] of bad) expect(badgeProblem(M, b), JSON.stringify(b)).toBe(why);
+test("a result's verdict is its own: none without a badge or on a failed result", () => {
+  const good = { app: "board", dot: "red" };
+  expect(badgeOf(M, { content: [] })).toBeNull();
+  expect(badgeOf(M, { isError: true, _meta: { "buwiz/badge": { app: "board" } } })).toBeNull();
+  expect(badgeOf(M, { _meta: { "buwiz/badge": good } })).toEqual({ problem: null });
+  expect(badgeOf(M, { _meta: { "buwiz/badge": { app: "board" } } })?.problem).toContain("it sets nothing");
 });
 
 test("the badge never reaches the app or the model", () => {

@@ -5,12 +5,18 @@
 //! [`Badge`] is checked as it is made, so a plugin cannot put a malformed one
 //! on a result by accident; [`with_badge`] puts it there.
 //!
+//! The host takes a `text` as written (1 to 8 characters, no control
+//! character or line separator, no space at either end). [`Badge::new`] trims
+//! plain spaces (U+0020 only) from the text it is given before it checks it,
+//! and refuses what the host would call malformed; the TypeScript `badge` does
+//! the same, so both accept and refuse exactly the same inputs.
+//!
 //! ```
 //! use buwiz_plugin::{Badge, Dot, ok, with_badge};
 //! use serde_json::json;
 //!
 //! let badge = Badge::new("board", Some(Dot::Amber), Some("18h")).unwrap();
-//! let result = with_badge(ok(json!({ "due": 18 })), &badge);
+//! let result = with_badge(ok(json!({ "due": 18 })), &badge).unwrap();
 //! assert_eq!(result["_meta"]["buwiz/badge"]["dot"], "amber");
 //! ```
 
@@ -49,8 +55,12 @@ impl Dot {
 pub enum BadgeError {
     /// The app id breaks the app id grammar.
     App,
-    /// A set with neither a dot nor text.
+    /// A set that shows nothing: no dot (or `none`) and no text. Use [`Badge::clear`].
     Empty,
+    /// A text that is empty once its spaces are trimmed; leave the text out.
+    TextEmpty,
+    /// The result's `_meta` is neither absent, null nor an object.
+    Meta,
     /// More than [`TEXT_MAX`] characters.
     TextTooLong,
     /// A control character or a line break.
@@ -63,7 +73,11 @@ impl std::fmt::Display for BadgeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             BadgeError::App => "the app id breaks the app id grammar",
-            BadgeError::Empty => "a badge sets a dot or text; to remove one use Badge::clear",
+            BadgeError::Empty => {
+                "a badge shows a dot other than none, or text; to remove one use Badge::clear"
+            }
+            BadgeError::TextEmpty => "a badge's text is empty; leave it out",
+            BadgeError::Meta => "the result's _meta is not an object",
             BadgeError::TextTooLong => "a badge's text is at most 8 characters",
             BadgeError::TextNotOneLine => "a badge's text is one line, with no control character",
             BadgeError::Ticket => "the ticket breaks the ticket grammar",
@@ -92,18 +106,17 @@ fn is_app_id(id: &str) -> bool {
 }
 
 impl Badge {
-    /// A badge for `app`: a dot, text, or both. The text is trimmed; more than
-    /// [`TEXT_MAX`] characters, a control character or a line break is refused,
-    /// never cut. At least one of the two is needed.
+    /// A badge for `app`: a dot other than `none`, text, or both. Plain spaces
+    /// (U+0020, nothing else) are trimmed from the text's ends; what is left
+    /// must be 1 to [`TEXT_MAX`] characters with no control character or
+    /// line or paragraph separator, or it is refused, never cut.
     pub fn new(app: &str, dot: Option<Dot>, text: Option<&str>) -> Result<Badge, BadgeError> {
         if !is_app_id(app) {
             return Err(BadgeError::App);
         }
-        if dot.is_none() && text.is_none() {
-            return Err(BadgeError::Empty);
-        }
-        let text = match text.map(str::trim) {
+        let text = match text.map(|t| t.trim_matches(' ')) {
             None => None,
+            Some("") => return Err(BadgeError::TextEmpty),
             Some(t)
                 if t.chars()
                     .any(|c| c.is_control() || c == '\u{2028}' || c == '\u{2029}') =>
@@ -113,6 +126,9 @@ impl Badge {
             Some(t) if t.chars().count() > TEXT_MAX => return Err(BadgeError::TextTooLong),
             Some(t) => Some(t.to_owned()),
         };
+        if matches!(dot, None | Some(Dot::None)) && text.is_none() {
+            return Err(BadgeError::Empty);
+        }
         Ok(Badge {
             app: app.to_owned(),
             dot,
@@ -166,13 +182,18 @@ impl Badge {
 }
 
 /// `result` with `_meta["buwiz/badge"]` set to `badge`; the rest of its `_meta`
-/// stays. A result that fails (`isError`) has its badge ignored by the host.
-pub fn with_badge(mut result: Value, badge: &Badge) -> Value {
-    if let Some(o) = result.as_object_mut() {
-        let meta = o.entry("_meta").or_insert_with(|| json!({}));
-        if let Some(m) = meta.as_object_mut() {
-            m.insert(KEY.into(), badge.to_value());
-        }
+/// stays. A result with no `_meta`, or a null one, gets one. A `_meta` that is
+/// anything but an object (or a result that is not an object) is the author's
+/// error: [`BadgeError::Meta`]. A result that fails (`isError`) has its badge
+/// ignored by the host.
+pub fn with_badge(mut result: Value, badge: &Badge) -> Result<Value, BadgeError> {
+    let o = result.as_object_mut().ok_or(BadgeError::Meta)?;
+    let meta = o.entry("_meta").or_insert(Value::Null);
+    if meta.is_null() {
+        *meta = json!({});
     }
-    result
+    meta.as_object_mut()
+        .ok_or(BadgeError::Meta)?
+        .insert(KEY.into(), badge.to_value());
+    Ok(result)
 }

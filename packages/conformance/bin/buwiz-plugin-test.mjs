@@ -52,6 +52,7 @@ import {
   PROMPT_MAX,
   RATE_WINDOW_MS,
   audienceProblem,
+  badgeOf,
   checkOpen,
   checkPrompt,
   createSessions,
@@ -806,7 +807,11 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
       sessions.appSource({ plugin: m.id, app: a.id }).then(() => ""),
     );
 
-  // BRG-03, BRG-04, BRG-06, BRG-20: a session per app with tools, one signed call per tool
+  // BRG-20: what the host made of the `buwiz/badge` of each tool result this run obtains: the app
+  // calls below and the resolve calls after them (no call is made for it); checked once, at the end
+  const badges = [];
+
+  // BRG-03, BRG-04, BRG-06: a session per app with tools, one signed call per tool
   const withTools = (m.apps || []).filter((a) => a.permissions?.tools?.length);
 
   if (!withTools.length) skip("BRG-03", "signed calls", "no app has permissions.tools");
@@ -820,34 +825,30 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 
     if (!open) continue;
     let first = null;
-    const badges = [];
     const pace = pacer(MAX_PER_SECOND, RATE_WINDOW_MS);
 
     for (const tool of a.permissions.tools)
       await run("BRG-03", `${a.id}: a signed call of ${tool} reaches the plugin and is answered`, async () => {
         // as an app must: the broker takes 20 calls a second per open (13.2)
+        let verdict = null;
         const code = await pace(() => {
           const call = envelope(open, tool);
 
           first ||= call;
 
-          return codeOf(sessions.call(call));
+          return codeOf(
+            sessions.callChecked(call).then((r) => {
+              verdict = r.badge;
+            }),
+          );
         });
+
+        if (verdict) badges.push({ where: `${a.id}: ${tool}`, problem: verdict.problem });
 
         // an isError answer still went through the signed path
         expect(code === "resolved" || code === "tool_error", `${tool}: ${code}`);
-        // what the host made of a badge the result carried (16.4), checked below
-        const badge = sessions.takeBadgeProblem();
-
-        if (badge) badges.push(`${tool}: ${badge}`);
-
         return code === "tool_error" ? "answered isError for {} args" : "";
       });
-
-    // BRG-20: a badge a tool returns is well formed; the host drops one that is not, and the result still goes through
-    await run("BRG-20", `${a.id}: any buwiz/badge its tools return is well formed (16.4)`, () =>
-      expect(!badges.length, `malformed, so the host drops it: ${badges.join("; ")}`),
-    );
 
     if (!first) continue;
     await run("BRG-04", `${a.id}: the same envelope sent again is replayed`, async () =>
@@ -867,13 +868,19 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
   const tickets = [];
   const entries = [...(m.commands || []).map((c) => ["command", c]), ...(m.scopes || []).map((s) => ["scope", s])];
 
-  const resolveRaw = (kind, e, value, complete) =>
-    plugins.callTool(
+  const resolveRaw = async (kind, e, value, complete) => {
+    const r = await plugins.callTool(
       m.id,
       e.resolve,
       { kind, name: e.name, value, complete, context: { attached: [] } },
       { meta: { "buwiz/caller": { origin: "resolve", plugin: m.id, ts: Date.now() } }, timeout: 10_000 },
     );
+    const verdict = badgeOf(m, r);
+
+    if (verdict) badges.push({ where: `${e.resolve} (resolve)`, problem: verdict.problem });
+
+    return r;
+  };
 
   if (!entries.length) skip("INV-04", "resolve shapes", "the manifest has no commands or scopes");
 
@@ -965,6 +972,15 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
       expect(titleOnly(d), `fields other than valid and title: ${Object.keys(d).join(", ")}`);
       expect([...d.title].length <= 120, "the title is over 120 characters");
     });
+
+  // BRG-20: the badge of every result this run obtained is well formed (16.4); the host drops one that is not
+  const malformed = badges.filter((b) => b.problem);
+
+  if (!badges.length) skip("BRG-20", "a buwiz/badge a tool result carries is well formed (16.4)", "no tool result this run obtained carried one");
+  else
+    await run("BRG-20", `a buwiz/badge a tool result carries is well formed (16.4): ${badges.length} checked`, () =>
+      expect(!malformed.length, `malformed, so the host drops it: ${malformed.map((b) => `${b.where}: ${b.problem}`).join("; ")}`),
+    );
 }
 
 // ── output ───────────────────────────────────────────────────────────────

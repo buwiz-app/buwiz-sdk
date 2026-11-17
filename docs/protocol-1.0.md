@@ -1152,23 +1152,31 @@ To take a badge away, send the same key with `clear`:
 "_meta": { "buwiz/badge": { "app": "board", "clear": true } }
 ```
 
-| Field    | Rule                                                                                                                                     |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `app`    | One of this plugin's apps. Another plugin's app, or an id the manifest does not have, makes the badge malformed.                         |
-| `dot`    | `"red"`, `"amber"`, `"green"` or `"none"`. Optional.                                                                                     |
-| `text`   | A string, trimmed, 0 to 8 characters (Unicode characters, not bytes), one line: no control character or line break. Optional.            |
-| `ticket` | Optional; ticket grammar. Narrows the badge to the pins of `app` that carry that ticket. Without it the badge is for every pin of `app`. |
-| `clear`  | `true` removes the badge for `app` and `ticket`. With `clear`, no `dot` and no `text`; `clear: false` is malformed.                      |
+| Field    | Rule                                                                                                                                                                                                       |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app`    | One of this plugin's apps. Another plugin's app, or an id the manifest does not have, makes the badge malformed.                                                                                           |
+| `dot`    | `"red"`, `"amber"`, `"green"` or `"none"`; absent means `"none"`.                                                                                                                                          |
+| `text`   | A string of 1 to 8 characters (Unicode characters, not bytes), none of them a control character or a line or paragraph separator (U+2028, U+2029), not starting or ending with a space (U+0020). Optional. |
+| `ticket` | Optional (absent or `null`); ticket grammar. Narrows the badge to the pins of `app` that carry that ticket. Without it the badge is for every pin of `app`.                                                |
+| `clear`  | `true` removes the badge for `app` and `ticket`. With `clear`, no `dot` and no `text`.                                                                                                                     |
 
-- A badge that sets neither `dot` nor `text`, and is not a clear, is malformed. Text that is too long, or has a
-  control character or a line break, is malformed; the host does not cut it.
-- **Who may set it.** Any plugin that is approved and enabled, for its own apps only, from any origin's call: the
-  model's, a routine's, an app's, a widget's, a resolve. Ignored on `isError` results.
+- **What a badge must set.** A badge that is not a clear shows something: a `dot` other than `"none"`, or a `text`,
+  or both. `{app}` alone, and `{app, dot: "none"}` with no `text`, are malformed. The only way to remove a badge is
+  `clear: true`; a clear that also carries `dot` or `text`, or `clear: false`, is malformed.
+- **Text is taken as written.** Nobody trims it on the wire: a `text` that is empty, over 8 characters, has a
+  control character or a line or paragraph separator, or starts or ends with a space is malformed, and the host does
+  not cut or repair it. A plugin's library may trim plain spaces (U+0020 only) from what its author passes before it
+  checks it; both libraries here do, and accept and refuse exactly the same inputs.
+- **Who may set it.** Any plugin that is approved and enabled, for its own apps only, on the result of any call to
+  one of its own tools, whoever made the call: the model, a routine, an app, a widget, a resolve. The reserved
+  `buwiz.*` tools (section 10) are not read for a badge. Ignored on `isError` results.
 - **What the host does with a malformed badge.** It drops the badge, logs it once per plugin and reason, and the
   result still goes through, as for a malformed `buwiz/open`.
 - **One badge per app and ticket.** The host keeps one badge per (plugin, app, ticket or none), and a new one
-  replaces the old one whole: it is not merged with it. A badge with `dot: "none"` and no text shows nothing, and
-  is the same as a clear. A clear with a `ticket` removes that ticket's badge and leaves the others.
+  replaces the old one whole: it is not merged with it. A clear with a `ticket` removes that ticket's badge and
+  leaves the others.
+- **At most 32 badges per plugin**, ticketed and app-wide together. A set beyond that is dropped and logged once, as a
+  malformed one is; a clear always works, and frees a place.
 - **Where it is shown.** On each pin of `app`, beside the pin's title (the dot, in the host's red, amber or green
   status colour, then the text, small and dim). A pin with a ticket shows the badge for its ticket, else the badge
   for the app; a pin without a ticket shows the badge for the app. The badge takes no room from the pin: the pin
@@ -1662,7 +1670,7 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 | Resolve `prompt`                                    | 4000 characters, commands only                                                            |
 | Ticket title                                        | 120 characters                                                                            |
 | `buwiz/suggest`                                     | 3; label 40, prompt 200 characters                                                        |
-| `buwiz/badge`                                       | text 8 characters, one line; one event a second per badge                                 |
+| `buwiz/badge`                                       | text 1 to 8 characters, one line; 32 badges per plugin; one event a second per badge      |
 | Answer cards per answer                             | 1 main, 2 small; chips after 5 messages                                                   |
 | Error message                                       | 500 characters                                                                            |
 | Link / props in a link                              | 2048 characters / 1024 bytes                                                              |

@@ -176,11 +176,12 @@ buwiz.meta({ text: "Due in 3 days", pill: true });
 ## A badge on a pin: `buwiz/badge`
 
 A tool result may put a dot and up to 8 characters on the pins of one of your apps, so the person sees a
-state without opening it (spec 16.4). Any tool result may carry it, so a routine's query tool keeps it up to date
+state without opening it (spec 16.4). Any result of one of your own tools may carry it, so a routine's query tool keeps it up to date
 while the app is closed. Showing it asks the person for nothing.
 
 Both libraries build the badge and check it as it is made: an app id, a dot of `red`, `amber`, `green` or `none`,
-text that is trimmed and at most 8 characters on one line (refused, never cut), a ticket of the grammar. A clear
+text of 1 to 8 characters on one line, its plain spaces (U+0020) trimmed from both ends (refused, never cut), a ticket of the
+grammar, and something to show: a dot other than `none`, or text. A clear
 removes it. The host reads it only from a result that did not fail, for your own apps, and strips it before
 the model or an app sees the result.
 
@@ -192,8 +193,12 @@ use serde_json::json;
 fn notes_due(due: u32) -> serde_json::Value {
     let result = ok(json!({ "query": "due", "items": [] }));
     match due {
-        0 => with_badge(result, &Badge::clear("board").unwrap()),
-        n => with_badge(result, &Badge::new("board", Some(Dot::Amber), Some(format!("{n} due").as_str())).unwrap()),
+        0 => with_badge(result, &Badge::clear("board").unwrap()).unwrap(),
+        // the count alone, capped at "99999+" (6 characters), so it always fits the 8 a badge allows
+        n => {
+            let text = if n > 99_999 { "99999+".to_owned() } else { n.to_string() };
+            with_badge(result, &Badge::new("board", Some(Dot::Amber), Some(&text)).unwrap()).unwrap()
+        }
     }
 }
 ```
@@ -204,10 +209,13 @@ import { badge, clearBadge, ok, withBadge } from "@buwiz/sdk/plugin";
 // a routine's query tool: the count of what is due, and the badge for the app's pins
 const notesDue = (due: number) => {
   const result = ok({ query: "due", items: [] });
-  return withBadge(result, due === 0 ? clearBadge("board") : badge("board", { dot: "amber", text: `${due} due` }));
+  // the count alone, capped at "99999+" (6 characters), so it always fits the 8 a badge allows
+  const text = due > 99_999 ? "99999+" : String(due);
+  return withBadge(result, due === 0 ? clearBadge("board") : badge("board", { dot: "amber", text }));
 };
 ```
 
+`with_badge` returns a `Result` in Rust and `withBadge` throws in TypeScript when the result's `_meta` is not an object.
 `for_ticket(ticket)` in Rust and `ticket` in TypeScript narrow a badge, or a clear, to the pins that carry that ticket.
 A pin with a ticket shows its own badge, else the one for the app. Keep the text to a state and a count: no
 name, tax identification number, amount or ticket value (P12). A plugin on the Node template sets
