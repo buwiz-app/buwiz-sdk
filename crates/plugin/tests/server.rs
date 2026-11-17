@@ -126,6 +126,13 @@ impl Plugin for Toy {
                 ..Tool::default()
             }
             .with_press(PressEffect::Close, "toy_gone"),
+            Tool {
+                name: "toy_pin",
+                description: "Pin.",
+                input_schema: json!({ "type": "object" }),
+                ..Tool::default()
+            }
+            .with_audience(&["widget"]),
         ]
     }
 
@@ -587,7 +594,8 @@ fn lists_tools_and_serves_the_manifest_and_tsx_sources_only() {
             "toy_raw",
             "toy_press_empty",
             "toy_press_write",
-            "toy_press_none"
+            "toy_press_none",
+            "toy_pin"
         ]
     );
 
@@ -733,12 +741,19 @@ fn a_widget_call_carries_its_origin_and_name_and_an_unknown_origin_is_unknown() 
     let mut run = Run::new();
     run.provision();
     let widget = json!({ "origin": "widget", "plugin": Toy::ID, "widget": "R37", "ts": 1 });
-    let who = run.call("toy_list", json!({ "whoami": true }), widget.clone());
+    let who = run.call("toy_peek", json!({ "whoami": true }), widget.clone());
     assert_eq!(result(&who)["origin"], "widget");
     assert_eq!(result(&who)["widget"], "R37");
-    // a widget the person allowed to write reaches a write tool
-    let added = run.call("toy_add", json!({}), widget);
-    assert_eq!(result(&added)["added"], true);
+    // a widget the person allowed to write reaches a write offered to widgets
+    let pinned = run.call("toy_pin", json!({}), widget.clone());
+    assert_eq!(result(&pinned)["text"], "milk");
+    // a tool that is not offered to widgets is refused, read or write,
+    // whatever else its audience names
+    for tool in ["toy_list", "toy_add", "toy_raw", "toy_post"] {
+        let refused = run.call(tool, json!({}), widget.clone());
+        assert_eq!(result(&refused)["code"], "permission_denied", "{tool}");
+    }
+    assert_eq!(run.server.plugin().calls, ["toy_peek", "toy_pin"]);
     // an origin this library does not know is not a crash
     let other = json!({ "origin": "somebody", "plugin": Toy::ID, "ts": 1 });
     let who = run.call("toy_list", json!({ "whoami": true }), other);

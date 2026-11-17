@@ -363,9 +363,15 @@ export class Server<P extends Plugin = Plugin> {
    *    permissions.tools;
    *  - a resolve, a routine's query and a caller this library does not know
    *    only read;
-   *  - a routine's turn only reads, or calls a write its routine declares. */
+   *  - a routine's turn only reads, or calls a write its routine declares;
+   *  - a generated widget reaches only a tool whose audience names "widget"
+   *    (spec 16.4), read or write. */
   authorize(tool: Tool, caller: Caller): string | undefined {
     const served = this.served.value();
+    if (caller.origin === "widget") {
+      const audience = tool._meta?.["buwiz/audience"];
+      if (!Array.isArray(audience) || !audience.includes("widget")) return `${tool.name} is not offered to widgets`;
+    }
     if (caller.origin === "app" || caller.app !== undefined || caller.openId !== undefined) {
       if (!caller.app) return "an app call names no app";
       if (this.#sessions.get(caller.openId ?? "") !== caller.app) return "this app open was not certified by this plugin";
