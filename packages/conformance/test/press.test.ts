@@ -1,7 +1,18 @@
 // The host's rule for a call the person did not make (spec 16.5): which press
 // records it passes on, and when a write reaches a tool.
 import { expect, test } from "bun:test";
-import { argsHash, hostResult, mayReach, mayUseAccount, originOf, pressOf, pressOptedIn, withoutAccountUse } from "../src/v1/sessions.mjs";
+import {
+  argsHash,
+  audienceProblem,
+  callAnswer,
+  hostResult,
+  mayReach,
+  mayUseAccount,
+  originOf,
+  pressOf,
+  pressOptedIn,
+  pressProblem,
+} from "../src/v1/sessions.mjs";
 
 const ARGS = { folder: "work", n: 1 };
 const approved = (args: unknown = ARGS) => ({
@@ -63,25 +74,59 @@ test("a tool opts in only with approved true, an effect of post or close, and a 
   for (const name of ["ledger_pay_run", "tax_file", "tax_filing_start", "mail_send", "Queue.add", "bill_paid", "entry_void", "period_reopen", "form-submit"]) {
     expect(pressOptedIn(tool(name))).toBe(false);
   }
-  // the letters count anywhere in the name
+  // the letters count anywhere after the short name
   for (const name of [
     "ledger_payment_create",
-    "filed_report",
-    "submitted_form",
-    "sends_reminder",
-    "sendmail_draft",
+    "notes_filed_report",
+    "notes_submitted_form",
+    "notes_sends_reminder",
     "mail_resend",
     "job_enqueue",
-    "note_sent",
-    "profile_update",
-    "avoid_x",
-    "Reopened",
+    "notes_sent",
+    "notes_profile_update",
+    "notes_avoid_x",
+    "notes_Reopened",
+    "sendmail",
+    "sentry_send_note",
+    "notes_payment_create",
   ]) {
-    expect(pressOptedIn(tool(name))).toBe(false);
+    expect(pressOptedIn(tool(name)), name).toBe(false);
   }
-  for (const name of ["books_app_post_entry", "books_app_month_close", "books_app_batch", "books_entry_draft"]) {
-    expect(pressOptedIn(tool(name))).toBe(true);
+  // a short name is not read: `sentry`, `payroll` and `files` can opt in
+  for (const name of [
+    "sentry_post_note",
+    "payroll_note_post",
+    "files_note_post",
+    "books_app_post_entry",
+    "books_app_month_close",
+    "books_app_batch",
+    "books_entry_draft",
+    "Notes.Post-1",
+  ]) {
+    expect(pressOptedIn(tool(name)), name).toBe(true);
   }
+  // a lookalike letter or an invisible one hides a word, so any character outside a-z 0-9 _ . - bars the name
+  for (const name of ["notes_f\u0456le_post", "notes_fi\u200Ble_post", "notes_post note", "notes_p\u00F6st"]) {
+    expect(pressOptedIn(tool(name)), name).toBe(false);
+  }
+});
+
+test("a declared opt-in that cannot take effect says why", () => {
+  const tool = (name: string, meta: unknown) => ({ name, _meta: { "buwiz/press": meta } });
+  const good = { approved: true, effect: "post", describe: "notes_describe" };
+  expect(pressProblem(tool("notes_post", good))).toBeUndefined();
+  expect(pressProblem({ name: "notes_post" })).toBeUndefined();
+  expect(pressProblem(tool("notes_file_post", { approved: false }))).toBeUndefined();
+  expect(pressProblem(tool("notes_file_post", good))).toContain('"file"');
+  expect(pressProblem(tool("notes_f\u0456le", good))).toContain("character");
+  expect(pressProblem(tool("notes_post", { ...good, effect: "file" }))).toContain("effect");
+  expect(pressProblem(tool("notes_post", { approved: true, effect: "post" }))).toContain("describe");
+});
+
+test("an audience that is present and not an array is a problem; absent and arrays are not", () => {
+  const tool = (audience?: unknown) => ({ name: "notes_add", _meta: audience === undefined ? {} : { "buwiz/audience": audience } });
+  for (const audience of [undefined, [], ["app"], ["agent", "app"]]) expect(audienceProblem(tool(audience))).toBeUndefined();
+  for (const audience of ["app", { agent: true }, 1, true, null]) expect(audienceProblem(tool(audience)), String(audience)).toBeDefined();
 });
 
 test("an audience that is not an array opens a write to nobody", () => {
@@ -90,20 +135,32 @@ test("an audience that is not an array opens a write to nobody", () => {
   }
 });
 
-test("a result that asks for an account switch keeps everything else and drops the switch when the caller may not", () => {
+test("a call that asks for an account switch keeps its result, and the switch only for the person in a first-party plugin", () => {
   const use = { account: "google", label: "work" };
-  const r = { content: [], _meta: { "buwiz/account_use": use, "buwiz/save": { a: 1 }, "buwiz/open": {} } };
+  const r = {
+    content: [{ type: "text", text: "ok" }],
+    structuredContent: { n: 1 },
+    _meta: { "buwiz/account_use": use, "buwiz/save": { a: 1 }, "buwiz/open": {} },
+  };
+  const own = { content: r.content, structuredContent: r.structuredContent };
   expect(mayUseAccount("person", true)).toBe(true);
-  for (const [actor, firstParty] of [
-    ["agent", true],
-    ["routine", true],
-    ["person", false],
-    [undefined, true],
-  ] as const) {
-    expect(mayUseAccount(actor, firstParty)).toBe(false);
+  expect(callAnswer(r, "person", () => true)).toEqual({ ...own, _meta: { "buwiz/account_use": use, "buwiz/save": { a: 1 } } });
+  for (const actor of ["agent", "routine", "app", "Person", true, null, undefined]) {
+    for (const firstParty of [true, false]) {
+      if (actor === "person") continue;
+      expect(
+        callAnswer(r, actor, () => firstParty),
+        `${String(actor)} ${firstParty}`,
+      ).toEqual({ ...own, _meta: { "buwiz/save": { a: 1 }, "buwiz/account_use_refused": true } });
+    }
   }
-  expect(withoutAccountUse(hostResult(r))).toEqual({ content: [], _meta: { "buwiz/save": { a: 1 } } });
-  expect(withoutAccountUse(hostResult({ content: [], _meta: { "buwiz/account_use": use } }))).toEqual({ content: [] });
-  expect(withoutAccountUse(hostResult({ content: [] }))).toEqual({ content: [] });
-  expect(hostResult(r)._meta["buwiz/account_use"]).toEqual(use);
+  expect(callAnswer(r, "person", () => false)).toEqual({ ...own, _meta: { "buwiz/save": { a: 1 }, "buwiz/account_use_refused": true } });
+  // nothing asked: no marker, and the plugin is not looked up
+  const plain = { content: [], _meta: { "buwiz/open": {} } };
+  expect(
+    callAnswer(plain, "agent", () => {
+      throw new Error("looked up");
+    }),
+  ).toEqual({ content: [] });
+  expect(hostResult({ content: [], _meta: { "buwiz/account_use": use } }, false)).toEqual({ content: [], _meta: { "buwiz/account_use_refused": true } });
 });
