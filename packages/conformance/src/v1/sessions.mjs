@@ -17,6 +17,7 @@ import { JcsError, canonicalize, isInt, isObject, isString, signedBytes } from "
 import { fingerprintOf } from "./signing.mjs";
 import { LIMITS, permsDigest, validateProps } from "./manifest.mjs";
 import { resultData } from "./plugins.mjs";
+export { BADGE_TEXT_MAX, HIDDEN, badgeProblem } from "./badge.mjs";
 
 export const SKEW_MS = 60_000;
 export const NONCE_WINDOW_MS = 5 * 60_000;
@@ -246,54 +247,6 @@ export function checkOpen(m, o) {
   return out;
 }
 
-// a badge's dots and its text's longest (16.4)
-const BADGE_DOTS = ["red", "amber", "green", "none"];
-export const BADGE_TEXT_MAX = 8;
-
-/** Why a tool result's `_meta["buwiz/badge"]` `b` is malformed (16.4), or `null`.
- *  `m` is the plugin's manifest: the app is one of its own. The host drops a
- *  malformed badge and the result still goes through. The text is taken as
- *  written: nothing is trimmed here. */
-export function badgeProblem(m, b) {
-  if (!isObject(b)) return "it is not an object";
-
-  if (!isString(b.app)) return "app is not a string";
-
-  if (!(m.apps || []).some((a) => a.id === b.app)) return "app is not an app of this plugin";
-
-  if (b.ticket !== undefined && b.ticket !== null && !isV1("ticket", b.ticket)) return "ticket breaks the ticket grammar";
-
-  if ("clear" in b) {
-    if (b.clear !== true) return "clear is not true";
-
-    return "dot" in b || "text" in b ? "a clear carries only app and ticket" : null;
-  }
-
-  if ("dot" in b && !BADGE_DOTS.includes(b.dot)) return "dot is not red, amber, green or none";
-
-  if ("text" in b) {
-    if (!isString(b.text)) return "text is not a string";
-
-    if (b.text === "") return "text is empty";
-
-    if (/[\p{Cc}\u2028\u2029]/u.test(b.text)) return "text is not one line of plain characters";
-
-    if (b.text.startsWith(" ") || b.text.endsWith(" ")) return "text starts or ends with a space";
-
-    if ([...b.text].length > BADGE_TEXT_MAX) return "text is over 8 characters";
-  }
-
-  return !("text" in b) && (!("dot" in b) || b.dot === "none") ? "it sets nothing: a badge shows a dot or text, and a clear is clear: true" : null;
-}
-
-/** What the host made of the badge a tool result carried (16.4): `null` when it carried none, or
- *  the result failed (the host ignores it); else `{problem}`, `null` when it is well formed. */
-export function badgeOf(m, r) {
-  if (r?.isError || r?._meta?.["buwiz/badge"] === undefined) return null;
-
-  return { problem: badgeProblem(m, r._meta["buwiz/badge"]) };
-}
-
 /** A resolve tool's `prompt` answer (15.2): a starter
  *  flow's text, which Buwiz Bot puts in the composer for the person to edit and
  *  send. Commands only; `text` has something other than spaces, tabs and
@@ -513,12 +466,6 @@ export function createSessions(plugins) {
 
   /** POST /v1/host/call {envelope, sig} → {ok, result}, as `hostResult` has it. */
   async function call(b) {
-    return (await callChecked(b)).answer;
-  }
-
-  /** [`call`] with what the host made of the result's `buwiz/badge` (16.4): `{answer, badge}`, `badge`
-   *  as [`badgeOf`] has it. Only the call that carried the result has its verdict. */
-  async function callChecked(b) {
     if (!isObject(b) || !isObject(b.envelope) || !isString(b.sig)) refuse("invalid_args", "send {envelope, sig}");
     const { envelope, sig } = b;
 
@@ -569,16 +516,13 @@ export function createSessions(plugins) {
       release(s);
     }
 
-    // 16.4: read on a result that did not fail, and stripped with the rest of `_meta` below
-    const badge = badgeOf(plugins.manifestOf(plugins.rowOf(s.plugin)), r);
-
     if (r.isError) refuse("tool_error", cap(firstText(r) || `${envelope.tool} failed`, 500));
 
     if (resultBytes(r) > max)
       refuse("result_too_large", `${envelope.tool}'s result is over ${preview ? `${Math.round((max / 1048576) * 10) / 10} MiB` : "1 MiB"}`);
 
     // the tool has run and its result stands; a caller that may not switch accounts gets it without the switch
-    return { answer: { ok: true, result: callAnswer(r, envelope.actor, () => plugins.firstParty(plugins.rowOf(s.plugin))) }, badge };
+    return { ok: true, result: callAnswer(r, envelope.actor, () => plugins.firstParty(plugins.rowOf(s.plugin))) };
   }
 
   // ── tickets, resolve, app source ─────────────────────────────────────
@@ -704,5 +648,5 @@ export function createSessions(plugins) {
     return s ? { active: s.active, queued: s.queue.length } : null;
   };
 
-  return { open, close, call, callChecked, ticketTitle, resolve, appSource, stat, opens };
+  return { open, close, call, ticketTitle, resolve, appSource, stat, opens };
 }

@@ -171,6 +171,29 @@ Resource URIs: the manifest is `buwiz://manifest`; a TSX app's source is `buwiz-
 5. Install shows a warning when the new plugin would make an unqualified command ambiguous ("/name is also a
    command of <id>; it will need /<short>:name").
 
+### 4.2 Hidden characters
+
+A hidden character is one that changes how a text reads, or whether it is one line, without showing: a bidi
+override that draws a text reversed, a zero-width character, a separator that starts a line nobody counted. A text
+the host shows outside the app that holds one is refused wherever this guide says "hidden character" (a badge's text,
+section 16.4; the card described for the AI's press, section 16.6). The set is these code points, and no Unicode table
+decides it:
+
+| Range or code point                        | What it is                                                                        |
+| ------------------------------------------ | --------------------------------------------------------------------------------- |
+| U+0000 to U+001F, U+007F, U+0080 to U+009F | The C0 and C1 controls and DEL, line breaks and tabs among them                   |
+| U+00AD, U+061C, U+180E                     | Soft hyphen, Arabic letter mark, Mongolian vowel separator                        |
+| U+200B to U+200F                           | Zero-width characters and the left-to-right and right-to-left marks               |
+| U+2028 to U+202E                           | The line and paragraph separators and the bidi embeddings and overrides           |
+| U+2060 to U+206F                           | Word joiner, invisible operators, the bidi isolates, deprecated format characters |
+| U+FE00 to U+FE0F                           | Variation selectors                                                               |
+| U+FEFF                                     | Byte order mark, zero-width no-break space                                        |
+| U+FFF9 to U+FFFB                           | Interlinear annotation characters                                                 |
+| U+E0000 to U+E0FFF                         | Tag characters and variation selectors supplement                                 |
+
+A no-break space (U+00A0) and the other visible spaces are not hidden. Space (U+0020) is not hidden either; a rule that
+bars it says so.
+
 ## 5. Identity, keys and trust
 
 ### 5.1 The trust store
@@ -1152,19 +1175,19 @@ To take a badge away, send the same key with `clear`:
 "_meta": { "buwiz/badge": { "app": "board", "clear": true } }
 ```
 
-| Field    | Rule                                                                                                                                                                                                       |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app`    | One of this plugin's apps. Another plugin's app, or an id the manifest does not have, makes the badge malformed.                                                                                           |
-| `dot`    | `"red"`, `"amber"`, `"green"` or `"none"`; absent means `"none"`.                                                                                                                                          |
-| `text`   | A string of 1 to 8 characters (Unicode characters, not bytes), none of them a control character or a line or paragraph separator (U+2028, U+2029), not starting or ending with a space (U+0020). Optional. |
-| `ticket` | Optional (absent or `null`); ticket grammar. Narrows the badge to the pins of `app` that carry that ticket. Without it the badge is for every pin of `app`.                                                |
-| `clear`  | `true` removes the badge for `app` and `ticket`. With `clear`, no `dot` and no `text`.                                                                                                                     |
+| Field    | Rule                                                                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app`    | One of this plugin's apps. Another plugin's app, or an id the manifest does not have, makes the badge malformed.                                                      |
+| `dot`    | `"red"`, `"amber"`, `"green"` or `"none"`; absent means `"none"`.                                                                                                     |
+| `text`   | A string of 1 to 8 characters (Unicode characters, not bytes), none of them a hidden character (section 4.2), not starting or ending with a space (U+0020). Optional. |
+| `ticket` | Optional (absent or `null`); ticket grammar. Narrows the badge to the pins of `app` that carry that ticket. Without it the badge is for every pin of `app`.           |
+| `clear`  | `true` removes the badge for `app` and `ticket`. With `clear`, no `dot` and no `text`.                                                                                |
 
 - **What a badge must set.** A badge that is not a clear shows something: a `dot` other than `"none"`, or a `text`,
   or both. `{app}` alone, and `{app, dot: "none"}` with no `text`, are malformed. The only way to remove a badge is
   `clear: true`; a clear that also carries `dot` or `text`, or `clear: false`, is malformed.
 - **Text is taken as written.** Nobody trims it on the wire: a `text` that is empty, over 8 characters, has a
-  control character or a line or paragraph separator, or starts or ends with a space is malformed, and the host does
+  hidden character (section 4.2), or starts or ends with a space is malformed, and the host does
   not cut or repair it. A plugin's library may trim plain spaces (U+0020 only) from what its author passes before it
   checks it; both libraries here do, and accept and refuse exactly the same inputs.
 - **Who may set it.** Any plugin that is approved and enabled, for its own apps only, on the result of any call to
@@ -1268,7 +1291,7 @@ The `describe` tool MUST be read-only and in the app's `permissions.tools`, and 
 
 - `title`: text of 1 to 120 characters.
 - `lines`: 1 to 80 texts of 1 to 400 characters each.
-- Neither holds a ticket (`tkt_…`), a control character or an invisible formatting character.
+- Neither holds a ticket (`tkt_…`), a hidden character (section 4.2).
 
 The answer MUST say what the call will do with its real values and cover every argument the call uses; a `describe`
 that cannot show an argument MUST refuse it. The host shows the person the card with Not now and Allow, reads
@@ -1854,26 +1877,26 @@ numbering is an ID not in use, and an ID is never reused for another requirement
 
 ### C.3 Bridge and signing (BRG)
 
-| ID     | Side | Requirement                                                                                                                                    | Section          |
-| ------ | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| BRG-01 | host | A call of a tool outside `permissions.tools` rejects `permission_denied` and sends nothing.                                                    | 13.2, 14.2       |
-| BRG-02 | host | A call of a tool the person switched off rejects `disabled`.                                                                                   | 14.2, 14.5       |
-| BRG-03 | both | A call signed by the open's session key with a fresh nonce reaches the plugin with `buwiz/caller` origin `app` and is answered.                | 14.1, 14.2, 16.1 |
-| BRG-04 | host | The same envelope sent twice: the second rejects `replayed`.                                                                                   | 14.2, 14.3       |
-| BRG-05 | host | An envelope 61 s old or ahead rejects `stale`; 59 s passes.                                                                                    | 14.2             |
-| BRG-06 | host | An envelope signed by another key, or changed after signing, rejects `bad_signature`.                                                          | 14.2             |
-| BRG-07 | host | A call without a registered session rejects `session_invalid`.                                                                                 | 14.2             |
-| BRG-08 | host | A call on an open from an earlier plugin generation rejects `plugin_restarted`.                                                                | 14.2             |
-| BRG-09 | host | An `isError: true` result rejects `tool_error` with the first text.                                                                            | 13.2             |
-| BRG-10 | host | A result over 1 MiB rejects `result_too_large`; one just under passes.                                                                         | 13.2             |
-| BRG-11 | host | A call past its time limit rejects `timeout` and the broker sends MCP cancellation.                                                            | 13.2, 22.2       |
-| BRG-12 | host | The 9th concurrent call of an open waits; the 21st new call in one second rejects `rate_limited`.                                              | 13.2             |
-| BRG-13 | host | `buwiz.open({url})` opens only `https:` URLs of a listed origin, and asks every time.                                                          | 13.5, 17         |
-| BRG-14 | host | `buwiz.pickFile` never returns a path; `read()` after the open closes rejects `closed`.                                                        | 13.5             |
-| BRG-15 | host | `buwiz.attach` without consent rejects `consent_declined` and leaves the chat unchanged.                                                       | 13.5, 17         |
-| BRG-16 | host | Storage holds its key, value, quota and key-count limits, and one app cannot read another's keys.                                              | 21               |
-| BRG-19 | host | `buwiz.actions`, `onAction`, `meta` and `settle` are present without permissions, hold their rules, and an inline card draws and settles them. | 12, 13.6         |
-| BRG-20 | both | A tool result's `buwiz/badge`, when present, is well formed (section 16.4): the host drops a malformed one and the result still goes through.  | 16.4             |
+| ID     | Side | Requirement                                                                                                                                                                                                                                                                | Section          |
+| ------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| BRG-01 | host | A call of a tool outside `permissions.tools` rejects `permission_denied` and sends nothing.                                                                                                                                                                                | 13.2, 14.2       |
+| BRG-02 | host | A call of a tool the person switched off rejects `disabled`.                                                                                                                                                                                                               | 14.2, 14.5       |
+| BRG-03 | both | A call signed by the open's session key with a fresh nonce reaches the plugin with `buwiz/caller` origin `app` and is answered.                                                                                                                                            | 14.1, 14.2, 16.1 |
+| BRG-04 | host | The same envelope sent twice: the second rejects `replayed`.                                                                                                                                                                                                               | 14.2, 14.3       |
+| BRG-05 | host | An envelope 61 s old or ahead rejects `stale`; 59 s passes.                                                                                                                                                                                                                | 14.2             |
+| BRG-06 | host | An envelope signed by another key, or changed after signing, rejects `bad_signature`.                                                                                                                                                                                      | 14.2             |
+| BRG-07 | host | A call without a registered session rejects `session_invalid`.                                                                                                                                                                                                             | 14.2             |
+| BRG-08 | host | A call on an open from an earlier plugin generation rejects `plugin_restarted`.                                                                                                                                                                                            | 14.2             |
+| BRG-09 | host | An `isError: true` result rejects `tool_error` with the first text.                                                                                                                                                                                                        | 13.2             |
+| BRG-10 | host | A result over 1 MiB rejects `result_too_large`; one just under passes.                                                                                                                                                                                                     | 13.2             |
+| BRG-11 | host | A call past its time limit rejects `timeout` and the broker sends MCP cancellation.                                                                                                                                                                                        | 13.2, 22.2       |
+| BRG-12 | host | The 9th concurrent call of an open waits; the 21st new call in one second rejects `rate_limited`.                                                                                                                                                                          | 13.2             |
+| BRG-13 | host | `buwiz.open({url})` opens only `https:` URLs of a listed origin, and asks every time.                                                                                                                                                                                      | 13.5, 17         |
+| BRG-14 | host | `buwiz.pickFile` never returns a path; `read()` after the open closes rejects `closed`.                                                                                                                                                                                    | 13.5             |
+| BRG-15 | host | `buwiz.attach` without consent rejects `consent_declined` and leaves the chat unchanged.                                                                                                                                                                                   | 13.5, 17         |
+| BRG-16 | host | Storage holds its key, value, quota and key-count limits, and one app cannot read another's keys.                                                                                                                                                                          | 21               |
+| BRG-19 | host | `buwiz.actions`, `onAction`, `meta` and `settle` are present without permissions, hold their rules, and an inline card draws and settles them.                                                                                                                             | 12, 13.6         |
+| BRG-20 | both | A `buwiz/badge` on a tool result the run obtains (the app's calls and the resolves; a routine's query result is not obtained, so its badge is not checked), when present, is well formed (section 16.4): the host drops a malformed one and the result still goes through. | 16.4             |
 
 ### C.4 Reserved tools (RSV)
 

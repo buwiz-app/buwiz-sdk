@@ -64,14 +64,37 @@ describe("badge", () => {
     expect(wire(badge("board", { text: "  ok  " })).text).toBe("ok");
     expect(wire(badge("board", { text: "12345678" })).text).toBe("12345678");
     expect(wire(badge("board", { text: "ÅÅÅÅÅÅÅÅ" })).text).toBe("ÅÅÅÅÅÅÅÅ");
-    expect(wire(badge("board", { text: " x" })).text).toBe(" x");
-    expect(wire(badge("board", { text: "﻿x" })).text).toBe("﻿x");
+    expect(wire(badge("board", { text: "\u00a0x" })).text).toBe("\u00a0x");
     for (const empty of ["", "   "]) expect(reason(() => badge("board", { text: empty }))).toBe("text_empty");
     expect(reason(() => badge("board", { dot: "red", text: " " }))).toBe("text_empty");
     expect(reason(() => badge("board", { text: "123456789" }))).toBe("text_too_long");
     expect(reason(() => badge("board", { text: "ÅÅÅÅÅÅÅÅÅ" }))).toBe("text_too_long");
-    for (const bad of ["a\nb", "a\rb", "a\tb", "a\u0007b", "a\u2028b", "a\u2029b", "\u0085x", "ok\n", "\nok", " ok\n"])
-      expect(reason(() => badge("board", { text: bad }))).toBe("text_not_one_line");
+    for (const bad of [
+      "a\nb",
+      "a\rb",
+      "a\tb",
+      "a\u0007b",
+      "a\u2028b",
+      "a\u2029b",
+      "\u0085x",
+      "ok\n",
+      "\nok",
+      " ok\n",
+      "\u202e2 due",
+      "a\u200bb",
+      "a\u00adb",
+      "\ufeff2 due",
+      "\u2066x",
+      "a\u061cb",
+      "a\u180eb",
+      "a\u2060b",
+      "a\ufe0fb",
+      "a\u{e0041}b",
+      "\u200b",
+      "a\u007fb",
+      "a\u009fb",
+    ])
+      expect(reason(() => badge("board", { text: bad }))).toBe("text_hidden");
   });
 
   test("an app id and a ticket are checked", () => {
@@ -89,11 +112,11 @@ describe("badge", () => {
     expect(wire(clearBadge("board"))).toEqual({ app: "board", clear: true });
   });
 
-  test("a Badge cannot be built by hand", () => {
-    // a plain object is no Badge (the type checker refuses it), and the class has no public way in
-    // @ts-expect-error a plain object is not a Badge
-    const plain: Parameters<typeof withBadge>[1] = { app: "board" };
-    expect(() => withBadge(ok({}), plain)).toThrow();
+  test("withBadge takes only a Badge made by badge() or clearBadge()", () => {
+    // a plain object is no Badge (the type checker refuses it), even one with a toJSON, or a copy of a real one
+    const real = badge("board", { dot: "red" });
+    for (const fake of [{ app: "board" }, { toJSON: () => ({ app: "board" }) }, { ...real }, Object.create(Object.getPrototypeOf(real)) as object, null, "x"])
+      expect(reason(() => withBadge(ok({}), fake as never))).toBe("badge");
   });
 
   test("withBadge puts it in the result's _meta and keeps the rest", () => {
@@ -109,6 +132,15 @@ describe("badge", () => {
     expect(withBadge({ ...ok({}), _meta: null as never }, b)._meta?.[BADGE_KEY]).toEqual({ app: "board", dot: "amber", text: "18h" });
     expect(withBadge(fail("not_found", "No such item."), b).isError).toBe(true);
     expect(BADGE_KEY).toBe("buwiz/badge");
+  });
+
+  test("a result that is not an object is the author's error", () => {
+    const b = badge("board", { dot: "amber" });
+    for (const result of ["not a result", 3, [], null])
+      expect(
+        reason(() => withBadge(result as never, b)),
+        JSON.stringify(result),
+      ).toBe("meta");
   });
 
   test("a _meta that is not an object is the author's error", () => {

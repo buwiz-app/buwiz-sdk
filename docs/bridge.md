@@ -180,7 +180,7 @@ state without opening it (spec 16.4). Any result of one of your own tools may ca
 while the app is closed. Showing it asks the person for nothing.
 
 Both libraries build the badge and check it as it is made: an app id, a dot of `red`, `amber`, `green` or `none`,
-text of 1 to 8 characters on one line, its plain spaces (U+0020) trimmed from both ends (refused, never cut), a ticket of the
+text of 1 to 8 characters with no hidden character (spec 4.2), its plain spaces (U+0020) trimmed from both ends (refused, never cut), a ticket of the
 grammar, and something to show: a dot other than `none`, or text. A clear
 removes it. The host reads it only from a result that did not fail, for your own apps, and strips it before
 the model or an app sees the result.

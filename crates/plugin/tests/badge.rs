@@ -124,7 +124,6 @@ fn the_text_is_trimmed_of_plain_spaces_only_and_never_cut() {
         "\u{a0}x",
         "no other space is trimmed"
     );
-    assert_eq!(value("board", None, Some("\u{feff}x"))["text"], "\u{feff}x");
     assert_eq!(
         Badge::new("board", None, Some("")),
         Err(BadgeError::TextEmpty)
@@ -159,7 +158,7 @@ fn the_text_is_trimmed_of_plain_spaces_only_and_never_cut() {
     ] {
         assert_eq!(
             Badge::new("board", None, Some(bad)),
-            Err(BadgeError::TextNotOneLine),
+            Err(BadgeError::TextHidden),
             "{bad:?}"
         );
     }

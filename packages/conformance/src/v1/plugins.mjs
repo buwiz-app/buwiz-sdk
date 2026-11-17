@@ -21,6 +21,7 @@ import { generate, pubOf } from "./ed.mjs";
 import { V1Error, refuse } from "./errors.mjs";
 import { isObject, isString, kindOf } from "./jcs.mjs";
 import { HOST_PROTOCOL, MANIFEST_URI, addedPermissions, checkTools, compareSemver, permsDigest, reviewOf, verifyManifest } from "./manifest.mjs";
+import { badgeProblem } from "./badge.mjs";
 import { isApproved, loadTrust } from "./trust.mjs";
 
 // 5.3: the first-party publisher, whose approved plugins' answer cards
@@ -665,6 +666,9 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
     return { ok: true, tool, disabled };
   }
 
+  // what the host made of each badge a tool result carried since it started: {tool, problem|null}
+  const badgesSeen = [];
+
   /** A call to a running plugin: `_meta` as given, the broker's timeout
    *  with MCP cancellation, `plugin_restarted` when the process goes away. */
   async function callTool(id, name, args, { meta, timeout = T.call } = {}) {
@@ -682,7 +686,14 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
     if (meta) params._meta = meta;
 
     try {
-      return await Promise.race([conn.client.callTool(params, undefined, { timeout }), gone]);
+      const r = await Promise.race([conn.client.callTool(params, undefined, { timeout }), gone]);
+
+      // 16.4: the one place a plugin's tool result comes back, whoever asked for it; the manifest is
+      // looked up only for a result that carries a badge
+      if (!r?.isError && r?._meta?.["buwiz/badge"] !== undefined)
+        badgesSeen.push({ tool: name, problem: badgeProblem(manifestOf(rowOf(id)), r._meta["buwiz/badge"]) });
+
+      return r;
     } catch (e) {
       if (e instanceof V1Error) throw e;
 
@@ -771,6 +782,7 @@ export function createPlugins({ db, keys, clock = systemClock, logDir, trust = l
     setTool,
     spawn,
     callTool,
+    badgesSeen,
     callReserved,
     readResource,
     fail,

@@ -96,6 +96,10 @@ test(
     expect(failed.map((r) => r.id)).toEqual(["BRG-20"]);
     expect(failed[0]?.note).toContain("dot is not red, amber, green or none");
 
+    const viaResolve = (await rows("--env", "PROBE_BREAK=badge-resolve")).filter((r) => r.status === "fail");
+    expect(viaResolve.map((r) => r.id)).toEqual(["BRG-20"]);
+    expect(viaResolve[0]?.note).toContain("probe_resolve: text is over 8 characters");
+
     const none = (await rows("--env", "PROBE_BADGE=none")).filter((r) => r.id === "BRG-20");
     expect(none.map((r) => r.status)).toEqual(["skip"]);
     expect(none[0]?.note).toContain("no tool result");

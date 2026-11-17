@@ -5,7 +5,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BADGE_TEXT_MAX, badgeOf, badgeProblem, callAnswer, hostResult } from "../src/v1/sessions.mjs";
+import { BADGE_TEXT_MAX, badgeProblem, callAnswer, hostResult } from "../src/v1/sessions.mjs";
 
 const V = JSON.parse(readFileSync(join(import.meta.dir, "../../../vectors/badge.json"), "utf8")) as {
   apps: string[];
@@ -17,14 +17,6 @@ test("every shared vector is well formed or malformed for its reason", () => {
   expect(V.cases.length).toBeGreaterThan(40);
   for (const c of V.cases) expect(badgeProblem(M, c.badge), JSON.stringify(c.badge)).toBe(c.ok ? null : c.why!);
   expect(BADGE_TEXT_MAX).toBe(8);
-});
-
-test("a result's verdict is its own: none without a badge or on a failed result", () => {
-  const good = { app: "board", dot: "red" };
-  expect(badgeOf(M, { content: [] })).toBeNull();
-  expect(badgeOf(M, { isError: true, _meta: { "buwiz/badge": { app: "board" } } })).toBeNull();
-  expect(badgeOf(M, { _meta: { "buwiz/badge": good } })).toEqual({ problem: null });
-  expect(badgeOf(M, { _meta: { "buwiz/badge": { app: "board" } } })?.problem).toContain("it sets nothing");
 });
 
 test("the badge never reaches the app or the model", () => {

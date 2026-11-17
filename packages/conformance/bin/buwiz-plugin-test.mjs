@@ -52,7 +52,6 @@ import {
   PROMPT_MAX,
   RATE_WINDOW_MS,
   audienceProblem,
-  badgeOf,
   checkOpen,
   checkPrompt,
   createSessions,
@@ -807,10 +806,6 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
       sessions.appSource({ plugin: m.id, app: a.id }).then(() => ""),
     );
 
-  // BRG-20: what the host made of the `buwiz/badge` of each tool result this run obtains: the app
-  // calls below and the resolve calls after them (no call is made for it); checked once, at the end
-  const badges = [];
-
   // BRG-03, BRG-04, BRG-06: a session per app with tools, one signed call per tool
   const withTools = (m.apps || []).filter((a) => a.permissions?.tools?.length);
 
@@ -830,20 +825,13 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
     for (const tool of a.permissions.tools)
       await run("BRG-03", `${a.id}: a signed call of ${tool} reaches the plugin and is answered`, async () => {
         // as an app must: the broker takes 20 calls a second per open (13.2)
-        let verdict = null;
         const code = await pace(() => {
           const call = envelope(open, tool);
 
           first ||= call;
 
-          return codeOf(
-            sessions.callChecked(call).then((r) => {
-              verdict = r.badge;
-            }),
-          );
+          return codeOf(sessions.call(call));
         });
-
-        if (verdict) badges.push({ where: `${a.id}: ${tool}`, problem: verdict.problem });
 
         // an isError answer still went through the signed path
         expect(code === "resolved" || code === "tool_error", `${tool}: ${code}`);
@@ -868,19 +856,13 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
   const tickets = [];
   const entries = [...(m.commands || []).map((c) => ["command", c]), ...(m.scopes || []).map((s) => ["scope", s])];
 
-  const resolveRaw = async (kind, e, value, complete) => {
-    const r = await plugins.callTool(
+  const resolveRaw = (kind, e, value, complete) =>
+    plugins.callTool(
       m.id,
       e.resolve,
       { kind, name: e.name, value, complete, context: { attached: [] } },
       { meta: { "buwiz/caller": { origin: "resolve", plugin: m.id, ts: Date.now() } }, timeout: 10_000 },
     );
-    const verdict = badgeOf(m, r);
-
-    if (verdict) badges.push({ where: `${e.resolve} (resolve)`, problem: verdict.problem });
-
-    return r;
-  };
 
   if (!entries.length) skip("INV-04", "resolve shapes", "the manifest has no commands or scopes");
 
@@ -973,13 +955,17 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
       expect([...d.title].length <= 120, "the title is over 120 characters");
     });
 
-  // BRG-20: the badge of every result this run obtained is well formed (16.4); the host drops one that is not
+  // BRG-20: the badge of every tool result this run obtained is well formed (16.4), whichever call
+  // asked for it: the app's signed calls and the resolves, raw and through the broker. The host records
+  // each as it hands the result back (`plugins.badgesSeen`). A routine's query is not one of them: the
+  // runner makes no routine call, so a badge only a routine's query returns is not checked here.
+  const badges = plugins.badgesSeen;
   const malformed = badges.filter((b) => b.problem);
 
-  if (!badges.length) skip("BRG-20", "a buwiz/badge a tool result carries is well formed (16.4)", "no tool result this run obtained carried one");
+  if (!badges.length) skip("BRG-20", "a buwiz/badge on a tool result the run obtains is well formed (16.4)", "no tool result this run obtained carried one");
   else
-    await run("BRG-20", `a buwiz/badge a tool result carries is well formed (16.4): ${badges.length} checked`, () =>
-      expect(!malformed.length, `malformed, so the host drops it: ${malformed.map((b) => `${b.where}: ${b.problem}`).join("; ")}`),
+    await run("BRG-20", `a buwiz/badge on a tool result the run obtains is well formed (16.4): ${badges.length} checked`, () =>
+      expect(!malformed.length, `malformed, so the host drops it: ${malformed.map((b) => `${b.tool}: ${b.problem}`).join("; ")}`),
     );
 }
 

@@ -6,10 +6,10 @@
 // PROBE_BREAK=prompt makes its command answer a blank prompt (INV-10). Each
 // breaks that one rule and nothing else, which the runner then has to name.
 // Its tools return a well formed buwiz/badge made with the SDK's `badge` and `withBadge`;
-// PROBE_BREAK=badge makes it a malformed one (BRG-20). PROBE_BADGE=none returns none at all.
+// PROBE_BREAK=badge makes it a malformed one, PROBE_BREAK=badge-resolve one on a resolve's answer only (BRG-20). PROBE_BADGE=none returns none at all.
 // PROBE_TOOLS=<n> gives its app n more tools to call, to exercise the runner's pace.
 
-import { type Args, type Manifest, PROTOCOL, type Plugin, type Tool, Tickets, badge, main, ok, tsx, withBadge } from "../../../plugin/src";
+import { type Args, type Manifest, PROTOCOL, type Plugin, type Result, type Tool, Tickets, badge, main, ok, tsx, withBadge } from "../../../plugin/src";
 
 const GOOD = "export default function Board() {\n  return null;\n}\n";
 const BAD = `export default function Board() {\n  fetch("https://example.invalid");\n  return null;\n}\n`;
@@ -60,13 +60,14 @@ class Probe implements Plugin {
     ];
   }
 
-  call(tool: string, args: Args) {
+  call(tool: string, args: Args): Result {
     if (tool === "probe_resolve") {
       const value = String(args.value ?? "");
       if (args.kind === "command") return ok({ result: "prompt", text: process.env.PROBE_BREAK === "prompt" ? "  \n" : "Note:\n- " });
-      return args.complete
-        ? ok({ result: "choices", choices: [{ label: "milk", value: this.tickets.issue("milk") }] })
-        : ok({ result: "error", message: `No item ${value.slice(0, 40)}.` });
+      if (args.complete) return ok({ result: "choices", choices: [{ label: "milk", value: this.tickets.issue("milk") }] });
+      const none = ok({ result: "error", message: `No item ${value.slice(0, 40)}.` });
+      // PROBE_BREAK=badge-resolve: a malformed badge on a resolve's answer, none on the app's tools
+      return process.env.PROBE_BREAK === "badge-resolve" ? { ...none, _meta: { "buwiz/badge": { app: "board", text: "far too long" } } } : none;
     }
     const result = ok({ items: ["milk"] });
     if (process.env.PROBE_BREAK === "badge") return { ...result, _meta: { "buwiz/badge": { app: "board", dot: "blue" } } };

@@ -5,8 +5,8 @@
 //! [`Badge`] is checked as it is made, so a plugin cannot put a malformed one
 //! on a result by accident; [`with_badge`] puts it there.
 //!
-//! The host takes a `text` as written (1 to 8 characters, no control
-//! character or line separator, no space at either end). [`Badge::new`] trims
+//! The host takes a `text` as written (1 to 8 characters, no hidden
+//! character (spec 4.2), no space at either end). [`Badge::new`] trims
 //! plain spaces (U+0020 only) from the text it is given before it checks it,
 //! and refuses what the host would call malformed; the TypeScript `badge` does
 //! the same, so both accept and refuse exactly the same inputs.
@@ -59,12 +59,12 @@ pub enum BadgeError {
     Empty,
     /// A text that is empty once its spaces are trimmed; leave the text out.
     TextEmpty,
-    /// The result's `_meta` is neither absent, null nor an object.
+    /// The result is not an object, or its `_meta` is neither absent, null nor an object.
     Meta,
     /// More than [`TEXT_MAX`] characters.
     TextTooLong,
-    /// A control character or a line break.
-    TextNotOneLine,
+    /// A hidden character (spec 4.2): a control, a line separator, a bidi override, a zero-width one.
+    TextHidden,
     /// The ticket breaks the ticket grammar.
     Ticket,
 }
@@ -77,9 +77,9 @@ impl std::fmt::Display for BadgeError {
                 "a badge shows a dot other than none, or text; to remove one use Badge::clear"
             }
             BadgeError::TextEmpty => "a badge's text is empty; leave it out",
-            BadgeError::Meta => "the result's _meta is not an object",
+            BadgeError::Meta => "the result is not an object, or its _meta is not",
             BadgeError::TextTooLong => "a badge's text is at most 8 characters",
-            BadgeError::TextNotOneLine => "a badge's text is one line, with no control character",
+            BadgeError::TextHidden => "a badge's text has a hidden character (spec 4.2)",
             BadgeError::Ticket => "the ticket breaks the ticket grammar",
         })
     }
@@ -97,6 +97,17 @@ pub struct Badge {
     clear: bool,
 }
 
+/// A hidden character (spec 4.2): one that changes how a text reads, or whether it is one line,
+/// without showing. Explicit ranges, so no Unicode table decides it: the C0 and C1 controls and
+/// U+007F, U+00AD, U+061C, U+180E, U+200B to U+200F, U+2028 to U+202E (the line and paragraph
+/// separators and the bidi overrides), U+2060 to U+206F, U+FE00 to U+FE0F, U+FEFF, U+FFF9 to
+/// U+FFFB and U+E0000 to U+E0FFF.
+pub fn hidden(c: char) -> bool {
+    matches!(c as u32,
+        0x00..=0x1F | 0x7F..=0x9F | 0xAD | 0x61C | 0x180E | 0x200B..=0x200F | 0x2028..=0x202E
+        | 0x2060..=0x206F | 0xFE00..=0xFE0F | 0xFEFF | 0xFFF9..=0xFFFB | 0xE0000..=0xE0FFF)
+}
+
 /// `^[a-z][a-z0-9-]{0,47}$`.
 fn is_app_id(id: &str) -> bool {
     let mut chars = id.chars();
@@ -108,8 +119,7 @@ fn is_app_id(id: &str) -> bool {
 impl Badge {
     /// A badge for `app`: a dot other than `none`, text, or both. Plain spaces
     /// (U+0020, nothing else) are trimmed from the text's ends; what is left
-    /// must be 1 to [`TEXT_MAX`] characters with no control character or
-    /// line or paragraph separator, or it is refused, never cut.
+    /// must be 1 to [`TEXT_MAX`] characters with no hidden character (spec 4.2), or it is refused, never cut.
     pub fn new(app: &str, dot: Option<Dot>, text: Option<&str>) -> Result<Badge, BadgeError> {
         if !is_app_id(app) {
             return Err(BadgeError::App);
@@ -117,12 +127,7 @@ impl Badge {
         let text = match text.map(|t| t.trim_matches(' ')) {
             None => None,
             Some("") => return Err(BadgeError::TextEmpty),
-            Some(t)
-                if t.chars()
-                    .any(|c| c.is_control() || c == '\u{2028}' || c == '\u{2029}') =>
-            {
-                return Err(BadgeError::TextNotOneLine);
-            }
+            Some(t) if t.chars().any(hidden) => return Err(BadgeError::TextHidden),
             Some(t) if t.chars().count() > TEXT_MAX => return Err(BadgeError::TextTooLong),
             Some(t) => Some(t.to_owned()),
         };
