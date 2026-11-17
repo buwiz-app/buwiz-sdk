@@ -74,16 +74,14 @@ export function pressOf(actor, press) {
 }
 
 const PRESS_EFFECTS = ["post", "close"];
-const NEVER_PRESSED = ["file", "filing", "submit", "send", "queue", "pay", "paid", "void", "reopen"];
+const NEVER_PRESSED = ["file", "filing", "submit", "send", "sent", "queue", "pay", "paid", "void", "reopen"];
 
 /** Whether `tool` opted in to the AI's press (16.5): `buwiz/press` with `approved: true` and an
- *  effect of post or close, on a tool whose name has none of the words the AI never presses. */
+ *  effect of post or close, on a tool whose lowercase name contains none of the letter sequences the AI never presses. */
 export function pressOptedIn(tool) {
   const opt = tool?._meta?.["buwiz/press"];
-  const words = String(tool?.name ?? "")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/);
-  return isObject(opt) && opt.approved === true && PRESS_EFFECTS.includes(opt.effect) && !words.some((w) => NEVER_PRESSED.includes(w));
+  const name = String(tool?.name ?? "").toLowerCase();
+  return isObject(opt) && opt.approved === true && PRESS_EFFECTS.includes(opt.effect) && !NEVER_PRESSED.some((w) => name.includes(w));
 }
 
 /** `sha256:` over the JCS bytes of `args`: what a person's yes to a press covers. */
@@ -145,10 +143,19 @@ export function hostResult(r) {
   return out;
 }
 
+/** A host result without `_meta["buwiz/account_use"]`; an empty `_meta` goes too. */
+export function withoutAccountUse(result) {
+  const { _meta, ...rest } = result;
+  const { [ACCOUNT_USE]: _switch, ...kept } = _meta ?? {};
+
+  return Object.keys(kept).length ? { ...rest, _meta: kept } : rest;
+}
+
 /** Whether a result asking for an account switch may stand: only on the
- * person's own signed call to a first-party plugin. An agent's press, a
- * routine or anything else Buwiz Bot might sign is refused, whatever the tool
- * declares, so a plugin's own opt-in can't bring a switch in. */
+ * person's own signed call to a first-party plugin. For an agent's press, a
+ * routine or anything else Buwiz Bot might sign, the switch is dropped from
+ * the result, whatever the tool declares, so a plugin's own opt-in can't
+ * bring a switch in. */
 export function mayUseAccount(actor, firstParty) {
   return firstParty === true && actor === "person";
 }
@@ -464,10 +471,10 @@ export function createSessions(plugins) {
     if (resultBytes(r) > max)
       refuse("result_too_large", `${envelope.tool}'s result is over ${preview ? `${Math.round((max / 1048576) * 10) / 10} MiB` : "1 MiB"}`);
 
-    if (r?._meta?.[ACCOUNT_USE] !== undefined && !mayUseAccount(envelope.actor, plugins.firstParty(plugins.rowOf(s.plugin))))
-      refuse("permission_denied", "only a person's own press in a first-party plugin switches accounts");
+    // the tool has run and its result stands; a caller that may not switch accounts gets it without the switch
+    const may = mayUseAccount(envelope.actor, plugins.firstParty(plugins.rowOf(s.plugin)));
 
-    return { ok: true, result: hostResult(r) };
+    return { ok: true, result: may ? hostResult(r) : withoutAccountUse(hostResult(r)) };
   }
 
   // ── tickets, resolve, app source ─────────────────────────────────────

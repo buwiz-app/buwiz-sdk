@@ -1142,17 +1142,16 @@ this section defines; other words (for example `"app"`) mean nothing to the host
 the array in three places:
 
 - The model's surface (section 18.2). An array that leaves out `"agent"` (for example `["app"]`) keeps the tool off the
-  surface, and model calls of it are refused. An absent audience, or one that is not an array, leaves the tool on the
-  surface.
+  surface, and model calls of it are refused. An audience that is present but is not an array (a string, an object, a
+  number or `null`) does the same. An absent audience leaves the tool on the surface.
 - An AI's press through an app's screen (section 16.5). A write is open to agents only when the array contains
   `"agent"`. An absent audience is not open.
 - Generated widgets (below). A tool is offered to widgets only when the array contains `"widget"`. An absent audience
   is not offered.
 
-A plugin MUST write the audience as an array: the host reads any other value (for example the string `"app"`) as
-absent, which leaves the tool on the model's surface. A tool that wants the model, or the AI's press, or widgets,
-lists that word explicitly. An app's own calls (the
-person's) do not depend on the audience.
+A plugin MUST write the audience as an array. Any other value (for example the string `"app"`) keeps the tool off the
+model's surface and is open to nobody. A tool that wants the model, or the AI's press, or widgets, lists that word
+explicitly. An app's own calls (the person's) do not depend on the audience.
 
 **Widgets.** A generated widget is a small program the Bot's model writes into a chat. It reads and changes data
 through sources; a plugin offers tools to widgets by marking them `"widget"`:
@@ -1197,10 +1196,10 @@ A tool opts in with:
 | `effect`   | `"post"` or `"close"`. Any other value, or none, is no opt-in.                                          |
 | `describe` | The name of a read-only tool of this plugin that puts the call in plain words (below). MUST be present. |
 
-A tool whose name contains one of the words `file`, `filing`, `submit`, `send`, `queue`, `pay`, `paid`, `void` or
-`reopen` can never opt in, whatever it declares: the AI never presses these. The words of a name are the runs of
-letters and digits in its lowercase form (`ledger_pay_run` has `pay`; `sendmail` has none). The name rule is a
-backstop that matches whole words only (`payment` is not `pay`); it is not the guard. A plugin MUST NOT opt in a
+A tool whose lowercase name contains any of the letter sequences `file`, `filing`, `submit`, `send`, `sent`, `queue`,
+`pay`, `paid`, `void` or `reopen`, anywhere in the name, can never opt in, whatever it declares: the AI never presses
+these. `ledger_payment_create` contains `pay` and is refused. So is `profile_update`, which contains `file`.
+`notes_post` contains none and can opt in. The name rule is a backstop; it is not the guard. A plugin MUST NOT opt in a
 tool that files, submits, sends, pays, voids or reopens, whatever the tool is called (P5).
 
 **The card.** The host holds the call unsent and reads `describe` with the arguments `{tool, args}` of the held call.
@@ -1282,7 +1281,7 @@ A tool is on the model's surface only when all hold:
 
 - its plugin is enabled, running, and approved for its installed publisher key;
 - the tool is not reserved, not switched off, and starts with `<short>_`;
-- its `buwiz/audience`, if any, includes `"agent"`;
+- its `buwiz/audience` is absent, or is an array that includes `"agent"`;
 - its name does not start with a built-in prefix (`mcp_`, `office_`, `skill_`, `routine_`, `app_`, `bot_`)
   and is not already taken by another tool;
 - in a routine's turn, it is the routine's own plugin's tool or one of the routine's `reads` tools.

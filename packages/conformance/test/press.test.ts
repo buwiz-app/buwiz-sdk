@@ -1,7 +1,7 @@
 // The host's rule for a call the person did not make (spec 16.5): which press
 // records it passes on, and when a write reaches a tool.
 import { expect, test } from "bun:test";
-import { argsHash, mayReach, originOf, pressOf, pressOptedIn } from "../src/v1/sessions.mjs";
+import { argsHash, hostResult, mayReach, mayUseAccount, originOf, pressOf, pressOptedIn, withoutAccountUse } from "../src/v1/sessions.mjs";
 
 const ARGS = { folder: "work", n: 1 };
 const approved = (args: unknown = ARGS) => ({
@@ -63,6 +63,47 @@ test("a tool opts in only with approved true, an effect of post or close, and a 
   for (const name of ["ledger_pay_run", "tax_file", "tax_filing_start", "mail_send", "Queue.add", "bill_paid", "entry_void", "period_reopen", "form-submit"]) {
     expect(pressOptedIn(tool(name))).toBe(false);
   }
-  // a word is a whole run of letters and digits
-  expect(pressOptedIn(tool("sendmail_draft"))).toBe(true);
+  // the letters count anywhere in the name
+  for (const name of [
+    "ledger_payment_create",
+    "filed_report",
+    "submitted_form",
+    "sends_reminder",
+    "sendmail_draft",
+    "mail_resend",
+    "job_enqueue",
+    "note_sent",
+    "profile_update",
+    "avoid_x",
+    "Reopened",
+  ]) {
+    expect(pressOptedIn(tool(name))).toBe(false);
+  }
+  for (const name of ["books_app_post_entry", "books_app_month_close", "books_app_batch", "books_entry_draft"]) {
+    expect(pressOptedIn(tool(name))).toBe(true);
+  }
+});
+
+test("an audience that is not an array opens a write to nobody", () => {
+  for (const audience of ["agent", "app", { agent: true }, 1, true, null, ["app"], []]) {
+    expect(mayReach("agent", { name: "notes_add", _meta: { "buwiz/audience": audience } }, undefined, ARGS)).toBe(false);
+  }
+});
+
+test("a result that asks for an account switch keeps everything else and drops the switch when the caller may not", () => {
+  const use = { account: "google", label: "work" };
+  const r = { content: [], _meta: { "buwiz/account_use": use, "buwiz/save": { a: 1 }, "buwiz/open": {} } };
+  expect(mayUseAccount("person", true)).toBe(true);
+  for (const [actor, firstParty] of [
+    ["agent", true],
+    ["routine", true],
+    ["person", false],
+    [undefined, true],
+  ] as const) {
+    expect(mayUseAccount(actor, firstParty)).toBe(false);
+  }
+  expect(withoutAccountUse(hostResult(r))).toEqual({ content: [], _meta: { "buwiz/save": { a: 1 } } });
+  expect(withoutAccountUse(hostResult({ content: [], _meta: { "buwiz/account_use": use } }))).toEqual({ content: [] });
+  expect(withoutAccountUse(hostResult({ content: [] }))).toEqual({ content: [] });
+  expect(hostResult(r)._meta["buwiz/account_use"]).toEqual(use);
 });

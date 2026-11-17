@@ -196,8 +196,8 @@ change anything.
 A tool that names no `agent` can still take the AI's press, one press at a time,
 if it opts in with `_meta["buwiz/press"] = {approved: true, effect: "post", describe: "<a read>"}`.
 `effect` is `post` or `close`. Anything else, a tool with no `effect`, or a tool whose
-name has the word file, filing, submit, send, queue, pay, paid, void or reopen (words are the runs of letters and digits,
-so `ledger_pay_run` has `pay` and `sendmail` has none), is refused: filing is never the AI's.
+name contains file, filing, submit, send, sent, queue, pay, paid, void or reopen anywhere (so `ledger_payment_create`
+has `pay`), is refused: filing is never the AI's.
 Buwiz Bot holds the call unsent and shows the person a card with Not now and Allow.
 `describe` is a read of yours (`readOnlyHint: true`, and in the app's
 `permissions.tools`): it gets `{tool, args}` and answers `structuredContent`
