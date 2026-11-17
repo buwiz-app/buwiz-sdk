@@ -126,6 +126,21 @@ impl Plugin for Toy {
                 ..Tool::default()
             }
             .with_press(PressEffect::Close, "toy_gone"),
+            Tool {
+                name: "toy_pin",
+                description: "Pin.",
+                input_schema: json!({ "type": "object" }),
+                ..Tool::default()
+            }
+            .with_audience(&["widget"]),
+            Tool {
+                name: "toy_look",
+                description: "Look.",
+                input_schema: json!({ "type": "object" }),
+                read_only: true,
+                ..Tool::default()
+            }
+            .with_audience(&["agent"]),
         ]
     }
 
@@ -587,7 +602,9 @@ fn lists_tools_and_serves_the_manifest_and_tsx_sources_only() {
             "toy_raw",
             "toy_press_empty",
             "toy_press_write",
-            "toy_press_none"
+            "toy_press_none",
+            "toy_pin",
+            "toy_look"
         ]
     );
 
@@ -733,12 +750,42 @@ fn a_widget_call_carries_its_origin_and_name_and_an_unknown_origin_is_unknown() 
     let mut run = Run::new();
     run.provision();
     let widget = json!({ "origin": "widget", "plugin": Toy::ID, "widget": "R37", "ts": 1 });
-    let who = run.call("toy_list", json!({ "whoami": true }), widget.clone());
+    let who = run.call("toy_peek", json!({ "whoami": true }), widget.clone());
     assert_eq!(result(&who)["origin"], "widget");
     assert_eq!(result(&who)["widget"], "R37");
-    // a widget the person allowed to write reaches a write tool
-    let added = run.call("toy_add", json!({}), widget);
-    assert_eq!(result(&added)["added"], true);
+    // a widget the person allowed to write reaches a write offered to widgets
+    let pinned = run.call("toy_pin", json!({}), widget.clone());
+    assert_eq!(result(&pinned)["text"], "milk");
+    // a tool that is not offered to widgets is refused, read or write,
+    // whatever else its audience names
+    for tool in ["toy_list", "toy_add", "toy_raw", "toy_post", "toy_look"] {
+        let refused = run.call(tool, json!({}), widget.clone());
+        assert_eq!(result(&refused)["code"], "permission_denied", "{tool}");
+    }
+    // a widget's call names no app, open or press: one that does is refused,
+    // even for a tool offered to widgets and an open this process certified
+    run.open("fast", 4);
+    let mut through_app = app_caller("fast", 4);
+    through_app["origin"] = json!("widget");
+    let mut pressed = widget.clone();
+    pressed["press"] = json!({ "by": "ai", "who": "agent.example" });
+    for caller in [through_app, pressed] {
+        let refused = run.call("toy_pin", json!({}), caller);
+        assert_eq!(result(&refused)["code"], "permission_denied");
+    }
+    // the host's own tools are not a widget's: the open is still there after
+    let closed = run.call(
+        "buwiz.session.close",
+        json!({ "open_id": b64::encode(&[4; 16]) }),
+        widget.clone(),
+    );
+    assert_eq!(result(&closed)["code"], "permission_denied");
+    let still_open = run.call("toy_add", json!({}), app_caller("fast", 4));
+    assert_eq!(result(&still_open)["added"], true);
+    assert_eq!(
+        run.server.plugin().calls,
+        ["toy_peek", "toy_pin", "toy_add"]
+    );
     // an origin this library does not know is not a crash
     let other = json!({ "origin": "somebody", "plugin": Toy::ID, "ts": 1 });
     let who = run.call("toy_list", json!({ "whoami": true }), other);

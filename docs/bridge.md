@@ -257,6 +257,10 @@ is an array of words (`"agent"`, `"widget"`), and `_meta["buwiz/press"]` opts a 
 AI's press. Both libraries build the entry from the tool; `_meta` is shown as given, and the key
 is left out when the tool has none.
 
+The host offers a widget only the tools whose audience names `"widget"`. Both libraries check
+it again: a call with `origin: "widget"` to any other tool, or to a reserved `buwiz.*` tool, is
+refused before the tool runs.
+
 ```rust
 use buwiz_plugin::{PressEffect, Tool};
 

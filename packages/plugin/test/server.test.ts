@@ -92,6 +92,8 @@ class Toy implements Plugin {
       withPress({ name: "toy_press_empty", description: "A.", inputSchema: o, readOnly: false }, "post", ""),
       withPress({ name: "toy_press_write", description: "B.", inputSchema: o, readOnly: false }, "post", "toy_add"),
       withPress({ name: "toy_press_none", description: "C.", inputSchema: o, readOnly: false }, "close", "toy_gone"),
+      withAudience({ name: "toy_pin", description: "Pin.", inputSchema: o, readOnly: false }, ["widget"]),
+      withAudience({ name: "toy_look", description: "Look.", inputSchema: o, readOnly: true }, ["agent"]),
     ];
   }
 
@@ -365,6 +367,8 @@ test("lists tools and serves the manifest and TSX sources only", async () => {
     "toy_press_empty",
     "toy_press_write",
     "toy_press_none",
+    "toy_pin",
+    "toy_look",
   ]);
   // a tool's _meta is shown as declared, and the key is absent without one
   const by = (name: string) => listed.find((t: Tool) => t.name === name);
@@ -470,11 +474,29 @@ test("a widget call carries its origin and name, and an unknown origin is unknow
   const run = new Run();
   await run.provision();
   const widget = { origin: "widget", plugin: "app.buwiz.toy", widget: "R37", ts: 1 };
-  const who = result(await run.call("toy_list", { whoami: true }, widget));
+  const who = result(await run.call("toy_peek", { whoami: true }, widget));
   expect(who.origin).toBe("widget");
   expect(who.widget).toBe("R37");
-  // a widget the person allowed to write reaches a write tool
-  expect(result(await run.call("toy_add", {}, widget)).added).toBe(true);
+  // a widget the person allowed to write reaches a write offered to widgets
+  expect(result(await run.call("toy_pin", {}, widget)).text).toBe("milk");
+  // a tool that is not offered to widgets is refused, read or write,
+  // whatever else its audience names
+  for (const tool of ["toy_list", "toy_add", "toy_raw", "toy_post", "toy_look"]) {
+    expect(result(await run.call(tool, {}, widget)).code).toBe("permission_denied");
+  }
+  // a widget's call names no app, open or press: one that does is refused,
+  // even for a tool offered to widgets and an open this process certified
+  await run.open("fast", 4);
+  const throughApp = { ...appCaller("fast", 4), origin: "widget" };
+  const pressed = { ...widget, press: { by: "ai", who: "agent.example" } };
+  for (const caller of [throughApp, pressed]) {
+    expect(result(await run.call("toy_pin", {}, caller)).code).toBe("permission_denied");
+  }
+  // the host's own tools are not a widget's: the open is still there after
+  const closed = await run.call("buwiz.session.close", { open_id: b64u(new Uint8Array(16).fill(4)) }, widget);
+  expect(result(closed).code).toBe("permission_denied");
+  expect(result(await run.call("toy_add", {}, appCaller("fast", 4))).added).toBe(true);
+  expect(run.toy.calls).toEqual(["toy_peek", "toy_pin", "toy_add"]);
   // an origin this library does not know is not a crash
   const other = result(await run.call("toy_list", { whoami: true }, { origin: "somebody", plugin: "app.buwiz.toy", ts: 1 }));
   expect(other.origin).toBe("unknown");

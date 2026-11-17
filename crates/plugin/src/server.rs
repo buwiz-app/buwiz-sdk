@@ -119,6 +119,15 @@ impl Tool {
             json!({ "approved": true, "effect": effect.as_str(), "describe": describe }),
         )
     }
+
+    /// Whether the tool's `_meta["buwiz/audience"]` is an array naming `word`.
+    fn offered_to(&self, word: &str) -> bool {
+        self.meta
+            .as_ref()
+            .and_then(|meta| meta.get("buwiz/audience"))
+            .and_then(Value::as_array)
+            .is_some_and(|words| words.iter().any(|w| w.as_str() == Some(word)))
+    }
 }
 
 /// Why a tool's `buwiz/press` opt-in is not listed, if it is not: `describe`
@@ -445,6 +454,13 @@ impl<P: Plugin> Server<P> {
             Some(_) => return Ok(fail("invalid_args", "arguments must be a JSON object")),
         };
         if name.starts_with("buwiz.") {
+            // the host's own calls: a generated widget never makes one (spec 16.4)
+            if Caller::of(params).origin == Origin::Widget {
+                return Ok(fail(
+                    "permission_denied",
+                    "a reserved tool is not offered to widgets",
+                ));
+            }
             return self.reserved(name, arguments);
         }
         // P7: nothing before a successful provision
@@ -470,10 +486,21 @@ impl<P: Plugin> Server<P> {
     ///   `permissions.tools`;
     /// - a resolve, a routine's query and a caller this library does not
     ///   know only read;
-    /// - a routine's turn only reads, or calls a write its routine declares.
+    /// - a routine's turn only reads, or calls a write its routine declares;
+    /// - a generated widget reaches only a tool whose audience names
+    ///   `"widget"` (spec 16.4), read or write, and its call names no app,
+    ///   open or press.
     pub fn authorize(&self, tool: &Tool, caller: &Caller) -> Result<(), String> {
         let name = tool.name;
         let served = self.served.value()?;
+        if caller.origin == Origin::Widget {
+            if caller.app.is_some() || caller.open_id.is_some() || caller.press.is_some() {
+                return Err("a widget's call names no app, open or press".into());
+            }
+            if !tool.offered_to("widget") {
+                return Err(format!("{name} is not offered to widgets"));
+            }
+        }
         if caller.origin == Origin::App || caller.app.is_some() || caller.open_id.is_some() {
             let app = caller.app.as_deref().ok_or("an app call names no app")?;
             let open = caller.open_id.as_deref().unwrap_or("");
