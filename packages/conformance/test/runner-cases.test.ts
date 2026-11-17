@@ -219,7 +219,7 @@ test(
         first.rows.some((r) => r.id === id && r.status === "pass" && r.what.startsWith("hello: ")),
         id,
       ).toBe(true);
-    expect(idsOf(first.rows, "skip")).toEqual(["APP-04"]);
+    expect(idsOf(first.rows, "skip")).toEqual(["APP-04", "BRG-20"]);
     expect(first.rows.some((r) => /source check|text\/x-nsh-tsx/.test(r.what))).toBe(false);
 
     const not = await runJson([...args, "--sign-with", key]);

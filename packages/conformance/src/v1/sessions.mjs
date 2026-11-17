@@ -17,6 +17,7 @@ import { JcsError, canonicalize, isInt, isObject, isString, signedBytes } from "
 import { fingerprintOf } from "./signing.mjs";
 import { LIMITS, permsDigest, validateProps } from "./manifest.mjs";
 import { resultData } from "./plugins.mjs";
+export { BADGE_TEXT_MAX, HIDDEN, badgeProblem } from "./badge.mjs";
 
 export const SKEW_MS = 60_000;
 export const NONCE_WINDOW_MS = 5 * 60_000;
@@ -53,10 +54,10 @@ const keysAre = (o, names) => {
 
 const isHash = (v) => typeof v === "string" && /^sha256:[0-9a-f]{64}$/.test(v);
 
-/** The press record a call carries to the plugin (16.5): what Buwiz Bot allowed, under the
+/** The press record a call carries to the plugin (16.6): what Buwiz Bot allowed, under the
  *  signature. On every call that isn't the person's, reads too: a read goes out as `origin: app`,
  *  and this is how the plugin tells it from the person's own. Only an AI's press, in exactly one
- *  of the two shapes of 16.5; anything else is no record. */
+ *  of the two shapes of 16.6; anything else is no record. */
 export function pressOf(actor, press) {
   if (actor === "person" || press === null || typeof press !== "object" || Array.isArray(press)) return undefined;
   const ai = press.by === "ai" && keysAre(press, ["by", "who"]) && isHandle(press.who);
@@ -76,7 +77,7 @@ export function pressOf(actor, press) {
 const PRESS_EFFECTS = ["post", "close"];
 const NEVER_PRESSED = ["file", "filing", "submit", "send", "sent", "queue", "pay", "paid", "void", "reopen"];
 
-/** Why a tool name can never opt in to the AI's press (16.5), or undefined: a character outside
+/** Why a tool name can never opt in to the AI's press (16.6), or undefined: a character outside
  *  `a-z A-Z 0-9 _ . -`, or one of the letter sequences the AI never presses in the part after the
  *  first `_` (the short name has no `_`; a name with none is read whole). */
 export function pressNameBar(name) {
@@ -91,7 +92,7 @@ export function pressNameBar(name) {
   return word ? `its name contains "${word}" after the short name` : undefined;
 }
 
-/** Whether `tool` opted in to the AI's press (16.5): `buwiz/press` with `approved: true` and an
+/** Whether `tool` opted in to the AI's press (16.6): `buwiz/press` with `approved: true` and an
  *  effect of post or close, on a tool whose name [`pressNameBar`] lets through. */
 export function pressOptedIn(tool) {
   const opt = tool?._meta?.["buwiz/press"];
@@ -100,7 +101,7 @@ export function pressOptedIn(tool) {
 }
 
 /** Why a tool that declares `buwiz/press` with `approved: true` still can't take the AI's press, or
- *  undefined: it declares none, or the declaration works (16.5). */
+ *  undefined: it declares none, or the declaration works (16.6). */
 export function pressProblem(tool) {
   const opt = tool?._meta?.["buwiz/press"];
 
@@ -116,7 +117,7 @@ export function pressProblem(tool) {
   return undefined;
 }
 
-/** A tool's `buwiz/audience` that is present but not an array (16.4): the host keeps the tool off
+/** A tool's `buwiz/audience` that is present but not an array (16.5): the host keeps the tool off
  *  the model's list. Undefined when it is absent or an array. */
 export function audienceProblem(tool) {
   const audience = tool?._meta?.["buwiz/audience"];
@@ -127,7 +128,7 @@ export function audienceProblem(tool) {
 /** `sha256:` over the JCS bytes of `args`: what a person's yes to a press covers. */
 export const argsHash = (args) => `sha256:${createHash("sha256").update(signedBytes(args)).digest("hex")}`;
 
-/** Whether a signed call with `args` may reach `tool` (16.5): the person's may, and a read. A write
+/** Whether a signed call with `args` may reach `tool` (16.6): the person's may, and a read. A write
  *  for anyone else needs a tool whose `buwiz/audience` names `agent`, or one that opted in, with
  *  the record of the person's yes to these arguments. */
 export function mayReach(actor, tool, press, args) {
@@ -156,7 +157,7 @@ export function resultBytes(r) {
   return text + (r?.structuredContent === undefined ? 0 : Buffer.byteLength(JSON.stringify(r.structuredContent)));
 }
 
-/** A tool result without `_meta` (16.1, 16.6: never shown past the broker). */
+/** A tool result without `_meta` (16.1, 16.7: never shown past the broker). */
 export function stripMeta(r) {
   const out = { ...r };
 
@@ -173,7 +174,8 @@ const ACCOUNT_USE_REFUSED = "buwiz/account_use_refused";
 /** A tool result as Buwiz Bot gets it from an app's call: stripped, but for
  * `_meta["buwiz/document"]`, `buwiz/open_with`, `buwiz/save` and
  * `buwiz/account_use`, the keys Buwiz Bot itself acts on; the app and the
- * model still never see them (16.6). When `may` is false the account switch
+ * model still never see them (16.7). A `buwiz/badge` is not one of them: it is read
+ * ([`badgeProblem`], 16.4) and goes with the rest of `_meta`. When `may` is false the account switch
  * is not passed on: `buwiz/account_use_refused` stands in its place. */
 export function hostResult(r, may = true) {
   const out = stripMeta(r);

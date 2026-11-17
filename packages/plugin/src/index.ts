@@ -10,6 +10,7 @@
 // buwiz-plugin; both reproduce vectors/.
 
 export { Account, Accounts, DEFAULT_LABEL, accountRequired, nowS } from "./accounts";
+export { BADGE_KEY, BADGE_TEXT_MAX, type Badge, BadgeError, type BadgeReason, type Dot, badge, clearBadge, withBadge } from "./badge";
 export { main } from "./cli";
 export { type Json, JcsError, canonical, canonicalize, parseIJson, sha256Hex, sha256Jcs } from "./jcs";
 export { PluginKey, b64u, fromB64u } from "./key";

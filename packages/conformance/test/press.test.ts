@@ -1,4 +1,4 @@
-// The host's rule for a call the person did not make (spec 16.5): which press
+// The host's rule for a call the person did not make (spec 16.6): which press
 // records it passes on, and when a write reaches a tool.
 import { expect, test } from "bun:test";
 import {

@@ -82,6 +82,32 @@ test(
 );
 
 test(
+  "BRG-20 passes a well formed badge, fails a malformed one and is skipped, with its reason, when no result carries one",
+  async () => {
+    const key = (await keygen(tempDir())).path;
+    const rows = async (...env: string[]) => (JSON.parse((await node(RUNNER, [...probe("--sign-with", key, ...env), "--json"])).out) as { rows: Row[] }).rows;
+    const good = await rows();
+    expect(good.filter((r) => r.status === "fail")).toEqual([]);
+    expect(good.filter((r) => r.id === "BRG-20").map((r) => r.status)).toEqual(["pass"]);
+
+    const bad = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_BREAK=badge"), "--json"]);
+    const failed = (JSON.parse(bad.out) as { rows: Row[] }).rows.filter((r) => r.status === "fail");
+    expect(bad.code).toBe(1);
+    expect(failed.map((r) => r.id)).toEqual(["BRG-20"]);
+    expect(failed[0]?.note).toContain("dot is not red, amber, green or none");
+
+    const viaResolve = (await rows("--env", "PROBE_BREAK=badge-resolve")).filter((r) => r.status === "fail");
+    expect(viaResolve.map((r) => r.id)).toEqual(["BRG-20"]);
+    expect(viaResolve[0]?.note).toContain("probe_resolve: text is over 8 characters");
+
+    const none = (await rows("--env", "PROBE_BADGE=none")).filter((r) => r.id === "BRG-20");
+    expect(none.map((r) => r.status)).toEqual(["skip"]);
+    expect(none[0]?.note).toContain("no tool result");
+  },
+  MINUTE,
+);
+
+test(
   "a manifest signed by the signer is trusted from --key-file, or from BUWIZ_TRUST_FILE",
   async () => {
     const dir = tempDir();

@@ -143,7 +143,7 @@ behind explicit arguments (P5), and user-facing text that carries no subject dat
 The specification is [Buwiz Mini App Protocol 1.0](docs/protocol-1.0.md): every name, field, limit, reserved tool,
 check and error code, for plugin authors and host implementers. This SDK implements 1.0.0.
 
-The guides cover the manifest's fields and limits, the bridge, the security checklist (P1 to P10) and what the
+The guides cover the manifest's fields and limits, the bridge, the security checklist (P1 to P12) and what the
 conformance runner checks: [overview](docs/overview.md), [manifest](docs/manifest.md), [bridge](docs/bridge.md),
 [security](docs/security.md), [performance](docs/performance.md) and [testing](docs/testing.md).
 
