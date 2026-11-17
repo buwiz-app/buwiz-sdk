@@ -77,7 +77,25 @@ export interface Tool {
   /** Changes nothing. Resolve tools, a routine's query and a routine's turn
    *  may call only read-only tools (and a routine's declared writes). */
   readOnly: boolean;
+  /** The tool's `_meta`, shown unchanged in tools/list; absent leaves the key
+   *  out. `withAudience` and `withPress` write into it. */
+  meta?: Record<string, Json>;
 }
+
+/** What an approved AI press does (spec 16.5). */
+export type PressEffect = "post" | "close";
+
+/** `tool` with `_meta["buwiz/audience"]` set to `words` ("agent", "widget";
+ *  spec 16.4), always as an array. */
+export const withAudience = (tool: Tool, words: string[]): Tool => ({ ...tool, meta: { ...tool.meta, "buwiz/audience": [...words] } });
+
+/** `tool` opted in to the AI's press: `_meta["buwiz/press"]` is
+ *  `{approved: true, effect, describe}` (spec 16.5). `describe` names a read
+ *  tool of the plugin. */
+export const withPress = (tool: Tool, effect: PressEffect, describe: string): Tool => ({
+  ...tool,
+  meta: { ...tool.meta, "buwiz/press": { approved: true, effect, describe } },
+});
 
 /** Who asked: _meta["buwiz/caller"]. "unknown": the broker sent none, or an
  *  origin this library does not know; it only reads. */
@@ -250,9 +268,13 @@ export class Server<P extends Plugin = Plugin> {
         return {
           tools: [
             ...RESERVED.map((name) => ({ name, description: "Reserved for the Buwiz Bot.", inputSchema: { type: "object" } })),
-            ...this.plugin
-              .tools()
-              .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema, annotations: { readOnlyHint: t.readOnly } })),
+            ...this.plugin.tools().map((t) => ({
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema,
+              annotations: { readOnlyHint: t.readOnly },
+              ...(t.meta ? { _meta: t.meta } : {}),
+            })),
           ],
         };
       case "tools/call":

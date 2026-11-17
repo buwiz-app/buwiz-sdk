@@ -250,6 +250,34 @@ if (args.kind === "command" && !args.value) return ok({ result: "prompt", text: 
 An attachable scope must answer `token` for a value it offered as a choice:
 `buwiz.attach` and the composer rely on it (spec 13.5, 15.1).
 
+## Declaring who may use a tool
+
+A tool says who may use it in its `tools/list` entry (spec 16.4, 16.5): `_meta["buwiz/audience"]`
+is an array of words (`"agent"`, `"widget"`), and `_meta["buwiz/press"]` opts a write in to the
+AI's press. Both libraries build the entry from the tool; `_meta` is shown as given, and the key
+is left out when the tool has none.
+
+```rust
+use buwiz_plugin::{PressEffect, Tool};
+
+// `peek` is a read tool of the plugin; `notes_post` is a write the AI may press once allowed
+let peek = Tool { name: "notes_peek", description: "Peek.", input_schema, read_only: true, meta: None }
+    .with_audience(&["agent", "widget"]);
+let post = Tool { name: "notes_post", description: "Post.", input_schema, read_only: false, ..Tool::default() }
+    .with_press(PressEffect::Post, "notes_peek");
+```
+
+```ts
+import { withAudience, withPress } from "@buwiz/sdk/plugin";
+
+const peek = withAudience({ name: "notes_peek", description: "Peek.", inputSchema, readOnly: true }, ["agent", "widget"]);
+const post = withPress({ name: "notes_post", description: "Post.", inputSchema, readOnly: false }, "post", "notes_peek");
+```
+
+`with_press` and `withPress` always write `approved: true`; the audience is always an array. Any
+other `_meta` key goes in the tool's `meta` field. A plugin on the Node template passes `_meta`
+on the tool object itself.
+
 ## Reserved tools (Buwiz Bot to your plugin)
 
 `lib/buwiz-plugin.mjs` implements these; you only need them if you write your

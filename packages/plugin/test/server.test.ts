@@ -26,6 +26,8 @@ import {
   problems,
   sha256Jcs,
   tsx,
+  withAudience,
+  withPress,
 } from "../src";
 
 const APP = "export default function Board() {\n  return null;\n}\n";
@@ -84,6 +86,9 @@ class Toy implements Plugin {
       { name: "toy_list", description: "List.", inputSchema: o, readOnly: true },
       { name: "toy_add", description: "Add.", inputSchema: o, readOnly: false },
       { name: "toy_resolve", description: "Resolve.", inputSchema: o, readOnly: true },
+      withAudience({ name: "toy_peek", description: "Peek.", inputSchema: o, readOnly: true }, ["agent", "widget"]),
+      withPress({ name: "toy_post", description: "Post.", inputSchema: o, readOnly: false }, "post", "toy_peek"),
+      { name: "toy_raw", description: "Raw.", inputSchema: o, readOnly: false, meta: { "buwiz/audience": ["agent"], "vendor/x": 1 } },
     ];
   }
 
@@ -345,7 +350,17 @@ test("lists tools and serves the manifest and TSX sources only", async () => {
   expect(init.result.serverInfo.name).toBe("toy-mini-app");
   expect(init.result.instructions).toBe("Toy keeps a list.");
   const names = (await run.rpc("tools/list", {})).result.tools.map((t: Tool) => t.name);
-  expect(names).toEqual([...RESERVED, "toy_list", "toy_add", "toy_resolve"]);
+  expect(names).toEqual([...RESERVED, "toy_list", "toy_add", "toy_resolve", "toy_peek", "toy_post", "toy_raw"]);
+  // a tool's _meta is shown as declared, and the key is absent without one
+  const listed = (await run.rpc("tools/list", {})).result.tools;
+  const by = (name: string) => listed.find((t: Tool) => t.name === name);
+  expect("_meta" in by("toy_list")).toBe(false);
+  expect(by("toy_list").annotations.readOnlyHint).toBe(true);
+  expect(by("toy_peek")._meta).toEqual({ "buwiz/audience": ["agent", "widget"] });
+  expect(by("toy_peek").annotations.readOnlyHint).toBe(true);
+  expect(by("toy_post")._meta).toEqual({ "buwiz/press": { approved: true, effect: "post", describe: "toy_peek" } });
+  expect(by("toy_post").annotations.readOnlyHint).toBe(false);
+  expect(by("toy_raw")._meta).toEqual({ "buwiz/audience": ["agent"], "vendor/x": 1 });
   expect(RESERVED.length).toBe(7);
   const uris = (await run.rpc("resources/list", {})).result.resources.map((r: { uri: string }) => r.uri);
   expect(uris).toEqual(["buwiz://manifest", "buwiz-app://board"]);

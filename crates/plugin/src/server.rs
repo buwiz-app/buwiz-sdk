@@ -51,7 +51,7 @@ pub const CERT_MAX_MS: i64 = 8 * 3600 * 1000;
 pub type Args = Map<String, Value>;
 
 /// One of the plugin's own tools, as `tools/list` shows it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Tool {
     /// `<short>_<name>`.
     pub name: &'static str,
@@ -62,6 +62,44 @@ pub struct Tool {
     /// Changes nothing. Resolve tools, a routine's query and a routine's
     /// turn may call only read-only tools (and a routine's declared writes).
     pub read_only: bool,
+    /// The tool's `_meta`, shown unchanged in `tools/list`; `None` leaves the
+    /// key out. [`Tool::with_audience`] and [`Tool::with_press`] write into it.
+    pub meta: Option<Map<String, Value>>,
+}
+
+/// What an approved AI press does (spec 16.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PressEffect {
+    /// The call posts something.
+    Post,
+    /// The call closes something.
+    Close,
+}
+
+impl Tool {
+    /// Sets `_meta["buwiz/audience"]` to `words` (`"agent"`, `"widget"`; spec
+    /// 16.4), always as an array.
+    pub fn with_audience(mut self, words: &[&str]) -> Self {
+        self.meta
+            .get_or_insert_with(Map::new)
+            .insert("buwiz/audience".into(), json!(words));
+        self
+    }
+
+    /// Opts the tool in to the AI's press: `_meta["buwiz/press"]` is
+    /// `{approved: true, effect, describe}` (spec 16.5). `describe` names a
+    /// read tool of the plugin.
+    pub fn with_press(mut self, effect: PressEffect, describe: &str) -> Self {
+        let effect = match effect {
+            PressEffect::Post => "post",
+            PressEffect::Close => "close",
+        };
+        self.meta.get_or_insert_with(Map::new).insert(
+            "buwiz/press".into(),
+            json!({ "approved": true, "effect": effect, "describe": describe }),
+        );
+        self
+    }
 }
 
 /// Who asked: `_meta["buwiz/caller"]`.
@@ -332,12 +370,16 @@ impl<P: Plugin> Server<P> {
             .map(|name| json!({ "name": name, "description": "Reserved for the Buwiz Bot.", "inputSchema": { "type": "object" } }))
             .collect();
         list.extend(self.plugin.tools().into_iter().map(|tool| {
-            json!({
+            let mut entry = json!({
                 "name": tool.name,
                 "description": tool.description,
                 "inputSchema": tool.input_schema,
                 "annotations": { "readOnlyHint": tool.read_only },
-            })
+            });
+            if let Some(meta) = tool.meta {
+                entry["_meta"] = Value::Object(meta);
+            }
+            entry
         }));
         json!({ "tools": list })
     }
