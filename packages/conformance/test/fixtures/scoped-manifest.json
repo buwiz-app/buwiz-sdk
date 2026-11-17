@@ -1,0 +1,24 @@
+{
+  "protocol": "1.0.0",
+  "id": "com.example.scoped",
+  "short": "scoped",
+  "version": "0.1.0",
+  "title": "Scoped",
+  "description": "A plugin for the conformance runner's own tests of command and scope answers.",
+  "publisher": { "id": "com.example", "key_id": "example-key-01", "name": "Example Publisher" },
+  "commands": [{ "name": "draft", "args": "", "description": "Start a draft", "resolve": "scoped_resolve" }],
+  "scopes": [{ "name": "note", "description": "A note", "resolve": "scoped_resolve", "attach": true }],
+  "apps": [
+    {
+      "id": "board",
+      "title": "Board",
+      "description": "The list.",
+      "entry": "buwiz-app://board",
+      "mime": "text/x-nsh-tsx",
+      "sdk": "1",
+      "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "placement": ["full"],
+      "permissions": { "tools": ["scoped_resolve"] }
+    }
+  ]
+}

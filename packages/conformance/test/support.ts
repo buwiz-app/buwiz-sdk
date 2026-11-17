@@ -8,6 +8,8 @@ const PACKAGE = join(import.meta.dir, "..");
 export const RUNNER = join(PACKAGE, "bin/buwiz-plugin-test.mjs");
 export const SIGNER = join(PACKAGE, "src/v1/sign-manifest.mjs");
 export const PROBE = join(import.meta.dir, "fixtures/probe-plugin.ts");
+export const FIXTURES = join(import.meta.dir, "fixtures");
+export const TEMPLATE = join(PACKAGE, "template");
 
 export interface Row {
   id: string;
@@ -65,3 +67,28 @@ export async function probeSays(args: string[], env: Record<string, string> = {}
   if ((await proc.exited) !== 0) throw new Error(`probe ${args.join(" ")} failed`);
   return out;
 }
+
+/** The runner's `--command` and `--args` for a fixture plugin (`.mjs`), and `--env` for each of `env`. */
+export const fixture = (file: string, env: Record<string, string> = {}): string[] => [
+  "--command",
+  process.execPath,
+  "--args",
+  join(FIXTURES, file),
+  ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
+];
+
+/** Run the runner with `--json`: its exit code and rows (the whole result under `res`). It throws, with the exit code and stderr, when stdout is not the JSON result; a test of a usage error calls `node(RUNNER, ...)`. */
+export async function runJson(args: string[], env: Record<string, string> = {}) {
+  const done = await node(RUNNER, [...args, "--json"], env);
+  let res: { ok: boolean; plugin: { id: string }; trust: unknown; rows: Row[] };
+  try {
+    res = JSON.parse(done.out);
+  } catch {
+    throw new Error(`the runner printed no JSON result (exit ${done.code}); stderr: ${done.err.slice(0, 500)}; stdout: ${done.out.slice(0, 200)}`);
+  }
+  if (!Array.isArray(res?.rows)) throw new Error(`the runner's JSON has no rows (exit ${done.code}); stderr: ${done.err.slice(0, 500)}`);
+  return { ...done, res, rows: res.rows };
+}
+
+/** The ids of the rows with this status, without repeats. */
+export const idsOf = (rows: Row[], status: Row["status"]): string[] => [...new Set(rows.filter((r) => r.status === status).map((r) => r.id))];
