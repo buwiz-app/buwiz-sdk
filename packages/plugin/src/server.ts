@@ -77,25 +77,61 @@ export interface Tool {
   /** Changes nothing. Resolve tools, a routine's query and a routine's turn
    *  may call only read-only tools (and a routine's declared writes). */
   readOnly: boolean;
-  /** The tool's `_meta`, shown unchanged in tools/list; absent leaves the key
-   *  out. `withAudience` and `withPress` write into it. */
-  meta?: Record<string, Json>;
+  /** The tool's `_meta`, shown in tools/list as given (a `buwiz/press` opt-in
+   *  whose `describe` names no read-only tool of the list is left out); absent
+   *  leaves the key out. `withAudience` and `withPress` write into it. */
+  _meta?: Record<string, Json>;
 }
 
 /** What an approved AI press does (spec 16.5). */
 export type PressEffect = "post" | "close";
 
+const withMeta = (tool: Tool, key: string, value: Json): Tool => ({ ...tool, _meta: { ...tool._meta, [key]: value } });
+
 /** `tool` with `_meta["buwiz/audience"]` set to `words` ("agent", "widget";
- *  spec 16.4), always as an array. */
-export const withAudience = (tool: Tool, words: string[]): Tool => ({ ...tool, meta: { ...tool.meta, "buwiz/audience": [...words] } });
+ *  spec 16.4), always as an array.
+ *
+ *  Naming "agent" on a tool that is not read-only does more than list it for
+ *  the model: by spec 16.5 the AI's press on an app's screen may then run that
+ *  write with no Allow card. When the person should be asked each time, leave
+ *  "agent" out and opt in with `withPress`. */
+export const withAudience = (tool: Tool, words: string[]): Tool => withMeta(tool, "buwiz/audience", [...words]);
 
 /** `tool` opted in to the AI's press: `_meta["buwiz/press"]` is
- *  `{approved: true, effect, describe}` (spec 16.5). `describe` names a read
- *  tool of the plugin. */
-export const withPress = (tool: Tool, effect: PressEffect, describe: string): Tool => ({
-  ...tool,
-  meta: { ...tool.meta, "buwiz/press": { approved: true, effect, describe } },
-});
+ *  `{approved: true, effect, describe}` (spec 16.5), and the person gets an
+ *  Allow card each time. `describe` names a read-only tool of the plugin;
+ *  tools/list leaves the opt-in out (and writes a line to stderr) when it is
+ *  empty or names no read-only tool of the list.
+ *
+ *  A plugin MUST NOT opt in a tool that files, submits, sends, pays, voids or
+ *  reopens, whatever it is called (P5, spec 16.5); the host's name rule is only
+ *  a backstop. */
+export const withPress = (tool: Tool, effect: PressEffect, describe: string): Tool => withMeta(tool, "buwiz/press", { approved: true, effect, describe });
+
+/** The `_meta` tools/list shows for `tool`: its press opt-in is dropped, with a
+ *  line on stderr, unless `describe` names a read-only tool of `tools`. */
+function listedMeta(tool: Tool, tools: Tool[]): Record<string, Json> | undefined {
+  if (!tool._meta) return undefined;
+  const meta = { ...tool._meta };
+  if ("buwiz/press" in meta) {
+    const press = meta["buwiz/press"];
+    const describe = press && typeof press === "object" && !Array.isArray(press) ? press.describe : undefined;
+    const target = typeof describe === "string" && describe !== "" ? tools.find((t) => t.name === describe) : undefined;
+    const why =
+      typeof describe !== "string" || describe === ""
+        ? "describe is empty"
+        : !target
+          ? "describe names no tool of the plugin"
+          : !target.readOnly
+            ? "describe names a tool that is not read-only"
+            : "";
+    if (why) {
+      console.error(`${tool.name}: buwiz/press left out, ${why}`);
+      delete meta["buwiz/press"];
+    }
+  }
+  return Object.keys(meta).length ? meta : undefined;
+}
 
 /** Who asked: _meta["buwiz/caller"]. "unknown": the broker sent none, or an
  *  origin this library does not know; it only reads. */
@@ -264,19 +300,24 @@ export class Server<P extends Plugin = Plugin> {
         };
       case "ping":
         return {};
-      case "tools/list":
+      case "tools/list": {
+        const tools = this.plugin.tools();
         return {
           tools: [
             ...RESERVED.map((name) => ({ name, description: "Reserved for the Buwiz Bot.", inputSchema: { type: "object" } })),
-            ...this.plugin.tools().map((t) => ({
-              name: t.name,
-              description: t.description,
-              inputSchema: t.inputSchema,
-              annotations: { readOnlyHint: t.readOnly },
-              ...(t.meta ? { _meta: t.meta } : {}),
-            })),
+            ...tools.map((t) => {
+              const meta = listedMeta(t, tools);
+              return {
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema,
+                annotations: { readOnlyHint: t.readOnly },
+                ...(meta ? { _meta: meta } : {}),
+              };
+            }),
           ],
         };
+      }
       case "tools/call":
         return this.#toolsCall(params);
       case "resources/list":

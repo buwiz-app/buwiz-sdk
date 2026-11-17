@@ -76,29 +76,66 @@ pub enum PressEffect {
     Close,
 }
 
+impl PressEffect {
+    fn as_str(self) -> &'static str {
+        match self {
+            PressEffect::Post => "post",
+            PressEffect::Close => "close",
+        }
+    }
+}
+
 impl Tool {
-    /// Sets `_meta["buwiz/audience"]` to `words` (`"agent"`, `"widget"`; spec
-    /// 16.4), always as an array.
-    pub fn with_audience(mut self, words: &[&str]) -> Self {
+    fn with_meta(mut self, key: &str, value: Value) -> Self {
         self.meta
             .get_or_insert_with(Map::new)
-            .insert("buwiz/audience".into(), json!(words));
+            .insert(key.into(), value);
         self
     }
 
+    /// Sets `_meta["buwiz/audience"]` to `words` (`"agent"`, `"widget"`; spec
+    /// 16.4), always as an array.
+    ///
+    /// Naming `"agent"` on a tool that is not read-only does more than list it
+    /// for the model: by spec 16.5 the AI's press on an app's screen may then
+    /// run that write with no Allow card. When the person should be asked each
+    /// time, leave `"agent"` out and opt in with [`Tool::with_press`].
+    pub fn with_audience(self, words: &[&str]) -> Self {
+        self.with_meta("buwiz/audience", json!(words))
+    }
+
     /// Opts the tool in to the AI's press: `_meta["buwiz/press"]` is
-    /// `{approved: true, effect, describe}` (spec 16.5). `describe` names a
-    /// read tool of the plugin.
-    pub fn with_press(mut self, effect: PressEffect, describe: &str) -> Self {
-        let effect = match effect {
-            PressEffect::Post => "post",
-            PressEffect::Close => "close",
-        };
-        self.meta.get_or_insert_with(Map::new).insert(
-            "buwiz/press".into(),
-            json!({ "approved": true, "effect": effect, "describe": describe }),
-        );
-        self
+    /// `{approved: true, effect, describe}` (spec 16.5), and the person gets an
+    /// Allow card each time. `describe` names a read-only tool of the plugin;
+    /// `tools/list` leaves the opt-in out (and writes a line to stderr) when it
+    /// is empty or names no read-only tool of the list.
+    ///
+    /// A plugin MUST NOT opt in a tool that files, submits, sends, pays, voids
+    /// or reopens, whatever it is called (P5, spec 16.5); the host's name rule
+    /// is only a backstop.
+    pub fn with_press(self, effect: PressEffect, describe: &str) -> Self {
+        self.with_meta(
+            "buwiz/press",
+            json!({ "approved": true, "effect": effect.as_str(), "describe": describe }),
+        )
+    }
+}
+
+/// Why a tool's `buwiz/press` opt-in is not listed, if it is not: `describe`
+/// must name a read-only tool of the same list.
+fn press_refusal(meta: &Map<String, Value>, tools: &[Tool]) -> Option<&'static str> {
+    let describe = meta
+        .get("buwiz/press")?
+        .get("describe")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if describe.is_empty() {
+        return Some("describe is empty");
+    }
+    match tools.iter().find(|t| t.name == describe) {
+        None => Some("describe names no tool of the plugin"),
+        Some(t) if !t.read_only => Some("describe names a tool that is not read-only"),
+        Some(_) => None,
     }
 }
 
@@ -369,18 +406,30 @@ impl<P: Plugin> Server<P> {
             .iter()
             .map(|name| json!({ "name": name, "description": "Reserved for the Buwiz Bot.", "inputSchema": { "type": "object" } }))
             .collect();
-        list.extend(self.plugin.tools().into_iter().map(|tool| {
-            let mut entry = json!({
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.input_schema,
-                "annotations": { "readOnlyHint": tool.read_only },
-            });
-            if let Some(meta) = tool.meta {
-                entry["_meta"] = Value::Object(meta);
-            }
-            entry
-        }));
+        let tools = self.plugin.tools();
+        let entries: Vec<Value> = tools
+            .iter()
+            .map(|tool| {
+                let mut entry = json!({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": tool.input_schema,
+                    "annotations": { "readOnlyHint": tool.read_only },
+                });
+                if let Some(meta) = &tool.meta {
+                    let mut meta = meta.clone();
+                    if let Some(why) = press_refusal(&meta, &tools) {
+                        eprintln!("{}: buwiz/press left out, {why}", tool.name);
+                        meta.remove("buwiz/press");
+                    }
+                    if !meta.is_empty() {
+                        entry["_meta"] = Value::Object(meta);
+                    }
+                }
+                entry
+            })
+            .collect();
+        list.extend(entries);
         json!({ "tools": list })
     }
 

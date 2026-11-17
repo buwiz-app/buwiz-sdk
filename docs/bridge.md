@@ -275,8 +275,18 @@ const post = withPress({ name: "notes_post", description: "Post.", inputSchema, 
 ```
 
 `with_press` and `withPress` always write `approved: true`; the audience is always an array. Any
-other `_meta` key goes in the tool's `meta` field. A plugin on the Node template passes `_meta`
-on the tool object itself.
+other `_meta` key goes in the tool's `meta` field in Rust and its `_meta` field in TypeScript. A
+plugin on the Node template passes `_meta` on the tool object itself.
+
+Naming `"agent"` on a tool that is not read-only does more than list it for the model: by
+section 16.5 of the guide the AI's press on an app's screen may then run that write with no Allow
+card. When the person should be asked each time, leave `"agent"` out and opt in with the press.
+
+A plugin must not opt in a tool that files, submits, sends, pays, voids or reopens, whatever it is
+called (P5, spec 16.5); the host's name rule is only a backstop. Both libraries fail closed on
+the opt-in: `tools/list` leaves out a `buwiz/press` whose `describe` is empty or does not name a
+read-only tool of the same list, lists the tool without it, and writes one line to stderr naming
+the tool and the reason. A hand-written `_meta` gets the same check.
 
 ## Reserved tools (Buwiz Bot to your plugin)
 

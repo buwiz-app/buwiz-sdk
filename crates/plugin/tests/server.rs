@@ -96,7 +96,7 @@ impl Plugin for Toy {
             Tool {
                 name: "toy_raw",
                 description: "Raw.",
-                input_schema: object,
+                input_schema: object.clone(),
                 read_only: false,
                 meta: Some(
                     json!({ "buwiz/audience": ["agent"], "vendor/x": 1 })
@@ -105,6 +105,27 @@ impl Plugin for Toy {
                         .clone(),
                 ),
             },
+            Tool {
+                name: "toy_press_empty",
+                description: "A.",
+                input_schema: object.clone(),
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Post, ""),
+            Tool {
+                name: "toy_press_write",
+                description: "B.",
+                input_schema: object.clone(),
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Post, "toy_add"),
+            Tool {
+                name: "toy_press_none",
+                description: "C.",
+                input_schema: object,
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Close, "toy_gone"),
         ]
     }
 
@@ -563,7 +584,10 @@ fn lists_tools_and_serves_the_manifest_and_tsx_sources_only() {
             "toy_resolve",
             "toy_peek",
             "toy_post",
-            "toy_raw"
+            "toy_raw",
+            "toy_press_empty",
+            "toy_press_write",
+            "toy_press_none"
         ]
     );
 
@@ -593,6 +617,10 @@ fn lists_tools_and_serves_the_manifest_and_tsx_sources_only() {
         by("toy_raw")["_meta"],
         json!({ "buwiz/audience": ["agent"], "vendor/x": 1 })
     );
+    // a press opt-in whose describe is empty, a write or no tool is left out
+    for name in ["toy_press_empty", "toy_press_write", "toy_press_none"] {
+        assert!(by(name).get("_meta").is_none(), "{name}");
+    }
 
     let resources = run.rpc("resources/list", json!({}));
     let uris: Vec<&str> = resources["result"]["resources"]

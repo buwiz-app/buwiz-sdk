@@ -88,7 +88,10 @@ class Toy implements Plugin {
       { name: "toy_resolve", description: "Resolve.", inputSchema: o, readOnly: true },
       withAudience({ name: "toy_peek", description: "Peek.", inputSchema: o, readOnly: true }, ["agent", "widget"]),
       withPress({ name: "toy_post", description: "Post.", inputSchema: o, readOnly: false }, "post", "toy_peek"),
-      { name: "toy_raw", description: "Raw.", inputSchema: o, readOnly: false, meta: { "buwiz/audience": ["agent"], "vendor/x": 1 } },
+      { name: "toy_raw", description: "Raw.", inputSchema: o, readOnly: false, _meta: { "buwiz/audience": ["agent"], "vendor/x": 1 } },
+      withPress({ name: "toy_press_empty", description: "A.", inputSchema: o, readOnly: false }, "post", ""),
+      withPress({ name: "toy_press_write", description: "B.", inputSchema: o, readOnly: false }, "post", "toy_add"),
+      withPress({ name: "toy_press_none", description: "C.", inputSchema: o, readOnly: false }, "close", "toy_gone"),
     ];
   }
 
@@ -349,10 +352,21 @@ test("lists tools and serves the manifest and TSX sources only", async () => {
   const init = await run.rpc("initialize", { protocolVersion: "2025-11-25" });
   expect(init.result.serverInfo.name).toBe("toy-mini-app");
   expect(init.result.instructions).toBe("Toy keeps a list.");
-  const names = (await run.rpc("tools/list", {})).result.tools.map((t: Tool) => t.name);
-  expect(names).toEqual([...RESERVED, "toy_list", "toy_add", "toy_resolve", "toy_peek", "toy_post", "toy_raw"]);
-  // a tool's _meta is shown as declared, and the key is absent without one
   const listed = (await run.rpc("tools/list", {})).result.tools;
+  const names = listed.map((t: Tool) => t.name);
+  expect(names).toEqual([
+    ...RESERVED,
+    "toy_list",
+    "toy_add",
+    "toy_resolve",
+    "toy_peek",
+    "toy_post",
+    "toy_raw",
+    "toy_press_empty",
+    "toy_press_write",
+    "toy_press_none",
+  ]);
+  // a tool's _meta is shown as declared, and the key is absent without one
   const by = (name: string) => listed.find((t: Tool) => t.name === name);
   expect("_meta" in by("toy_list")).toBe(false);
   expect(by("toy_list").annotations.readOnlyHint).toBe(true);
@@ -361,6 +375,8 @@ test("lists tools and serves the manifest and TSX sources only", async () => {
   expect(by("toy_post")._meta).toEqual({ "buwiz/press": { approved: true, effect: "post", describe: "toy_peek" } });
   expect(by("toy_post").annotations.readOnlyHint).toBe(false);
   expect(by("toy_raw")._meta).toEqual({ "buwiz/audience": ["agent"], "vendor/x": 1 });
+  // a press opt-in whose describe is empty, a write or no tool is left out
+  for (const name of ["toy_press_empty", "toy_press_write", "toy_press_none"]) expect("_meta" in by(name)).toBe(false);
   expect(RESERVED.length).toBe(7);
   const uris = (await run.rpc("resources/list", {})).result.resources.map((r: { uri: string }) => r.uri);
   expect(uris).toEqual(["buwiz://manifest", "buwiz-app://board"]);
