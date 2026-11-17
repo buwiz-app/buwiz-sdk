@@ -188,6 +188,13 @@ function pressOf(record: unknown): Press | undefined {
   return { by: "ai_approved", who, approvedBy, once, argsHash, shownHash, at };
 }
 
+/** Whether a tools/call names a caller at all: _meta["buwiz/caller"] is there
+ *  and not null, whatever it says. The host's own reserved calls name none. */
+function callerNamed(params: Record<string, unknown>): boolean {
+  const named = (params._meta as Record<string, unknown> | undefined)?.["buwiz/caller"];
+  return named !== undefined && named !== null;
+}
+
 export function callerOf(params: Record<string, unknown>, accounts: Accounts = new Accounts()): Caller {
   const c = (params._meta as Record<string, unknown> | undefined)?.["buwiz/caller"] as Record<string, unknown> | undefined;
   const text = (key: string) => (typeof c?.[key] === "string" ? (c[key] as string) : undefined);
@@ -338,8 +345,9 @@ export class Server<P extends Plugin = Plugin> {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return fail("invalid_args", "arguments must be a JSON object");
     const args = raw as Args;
     if (name.startsWith("buwiz.")) {
-      // the host's own calls: a generated widget never makes one (spec 16.4)
-      if (callerOf(params).origin === "widget") return fail("permission_denied", "a reserved tool is not offered to widgets");
+      // the host's own calls, which carry no caller: one that names a caller,
+      // whoever it says it is, is not the host's
+      if (callerNamed(params)) return fail("permission_denied", "a reserved tool is the host's own to call");
       return this.#reserved(name, args);
     }
     // P7: nothing before a successful provision
