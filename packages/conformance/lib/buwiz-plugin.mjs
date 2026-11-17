@@ -181,6 +181,10 @@ export async function startPlugin(opts) {
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const { name: tool, arguments: args = {}, _meta: meta } = req.params;
 
+    // the reserved tools are the host's own calls, which carry no caller: one that names a
+    // caller, whoever it says it is, is not the host's
+    if (isV1("reservedTool", tool) && meta?.["buwiz/caller"] != null) return fail("permission_denied", "a reserved tool is the host's own to call");
+
     // provision first; no other buwiz.* tool works without a key either
     if (tool === "buwiz.provision") return provision(args);
 

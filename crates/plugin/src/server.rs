@@ -454,11 +454,16 @@ impl<P: Plugin> Server<P> {
             Some(_) => return Ok(fail("invalid_args", "arguments must be a JSON object")),
         };
         if name.starts_with("buwiz.") {
-            // the host's own calls: a generated widget never makes one (spec 16.4)
-            if Caller::of(params).origin == Origin::Widget {
+            // the host's own calls, which carry no caller: one that names a
+            // caller, whoever it says it is, is not the host's
+            if params
+                .get("_meta")
+                .and_then(|meta| meta.get("buwiz/caller"))
+                .is_some_and(|caller| !caller.is_null())
+            {
                 return Ok(fail(
                     "permission_denied",
-                    "a reserved tool is not offered to widgets",
+                    "a reserved tool is the host's own to call",
                 ));
             }
             return self.reserved(name, arguments);

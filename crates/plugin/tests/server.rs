@@ -247,6 +247,11 @@ impl Run {
     }
 
     fn open(&mut self, app: &str, open_byte: u8) -> Value {
+        self.open_as(app, open_byte, json!(null))
+    }
+
+    /// `buwiz.session.open` as `caller` makes it; the host names no caller.
+    fn open_as(&mut self, app: &str, open_byte: u8, caller: Value) -> Value {
         let entry = manifest::app(&Toy::manifest(Toy::RELEASE_KEY_ID), app)
             .cloned()
             .unwrap_or(json!({}));
@@ -257,7 +262,7 @@ impl Run {
                 "perms_sha256": manifest::permissions_digest(&entry).unwrap(),
                 "not_after": now() + 3_600_000,
             }),
-            json!(null),
+            caller,
         )
     }
 }
@@ -336,6 +341,47 @@ fn a_session_certificate_is_the_request_signed_with_the_provisioned_key() {
         json!(null),
     );
     assert_eq!(wrong["result"]["isError"], true);
+}
+
+#[test]
+fn a_reserved_tool_is_the_hosts_own_and_a_call_that_names_a_caller_is_refused() {
+    let mut run = Run::new();
+    run.provision();
+    run.open("fast", 4);
+    let callers = [
+        json!({ "origin": "agent" }),
+        app_caller("fast", 4),
+        json!({ "origin": "routine", "routine": "tidy" }),
+        json!({ "origin": "resolve" }),
+        json!({ "origin": "widget", "widget": "R37" }),
+        json!({ "origin": "somebody" }),
+        json!({ "origin": "" }),
+        json!({}),
+    ];
+    for caller in callers {
+        // no caller opens a session for itself: the open it asked for is not there
+        let opened = run.open_as("fast", 7, caller.clone());
+        assert_eq!(result(&opened)["code"], "permission_denied", "{caller}");
+        let forged = run.call("toy_add", json!({}), app_caller("fast", 7));
+        assert_eq!(result(&forged)["code"], "permission_denied", "{caller}");
+        // and none closes one or uninstalls: the host's open still works
+        for (name, args) in [
+            (
+                "buwiz.session.close",
+                json!({ "open_id": b64::encode(&[4; 16]) }),
+            ),
+            ("buwiz.uninstall", json!({})),
+        ] {
+            let refused = run.call(name, args, caller.clone());
+            assert_eq!(
+                result(&refused)["code"],
+                "permission_denied",
+                "{name} {caller}"
+            );
+        }
+        let still = run.call("toy_add", json!({}), app_caller("fast", 4));
+        assert_eq!(result(&still)["added"], true, "{caller}");
+    }
 }
 
 #[test]
@@ -773,19 +819,7 @@ fn a_widget_call_carries_its_origin_and_name_and_an_unknown_origin_is_unknown() 
         let refused = run.call("toy_pin", json!({}), caller);
         assert_eq!(result(&refused)["code"], "permission_denied");
     }
-    // the host's own tools are not a widget's: the open is still there after
-    let closed = run.call(
-        "buwiz.session.close",
-        json!({ "open_id": b64::encode(&[4; 16]) }),
-        widget.clone(),
-    );
-    assert_eq!(result(&closed)["code"], "permission_denied");
-    let still_open = run.call("toy_add", json!({}), app_caller("fast", 4));
-    assert_eq!(result(&still_open)["added"], true);
-    assert_eq!(
-        run.server.plugin().calls,
-        ["toy_peek", "toy_pin", "toy_add"]
-    );
+    assert_eq!(run.server.plugin().calls, ["toy_peek", "toy_pin"]);
     // an origin this library does not know is not a crash
     let other = json!({ "origin": "somebody", "plugin": Toy::ID, "ts": 1 });
     let who = run.call("toy_list", json!({ "whoami": true }), other);

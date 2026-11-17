@@ -151,15 +151,20 @@ class Run {
     return this.call("buwiz.provision", { protocol: "1.0.1", plugin: this.toy.id, key: { alg: "ed25519", seed: b64u(SEED) }, pub: key.public() });
   }
 
-  open(app: string, byte: number) {
+  /** buwiz.session.open as `caller` makes it; the host names no caller. */
+  open(app: string, byte: number, caller: unknown = null) {
     const entry = this.toy.manifest(this.toy.releaseKeyId).apps?.find((a) => a.id === app) ?? {};
-    return this.call("buwiz.session.open", {
-      app,
-      open_id: b64u(new Uint8Array(16).fill(byte)),
-      ks_pub: b64u(new Uint8Array(32).fill(2)),
-      perms_sha256: permissionsDigest(entry),
-      not_after: Date.now() + 3_600_000,
-    });
+    return this.call(
+      "buwiz.session.open",
+      {
+        app,
+        open_id: b64u(new Uint8Array(16).fill(byte)),
+        ks_pub: b64u(new Uint8Array(32).fill(2)),
+        perms_sha256: permissionsDigest(entry),
+        not_after: Date.now() + 3_600_000,
+      },
+      caller,
+    );
   }
 }
 
@@ -207,6 +212,31 @@ test("a session certificate is the request signed with the provisioned key", asy
     not_after: Date.now() + 1000,
   });
   expect(wrong.result.isError).toBe(true);
+});
+
+test("a reserved tool is the host's own, and a call that names a caller is refused", async () => {
+  const run = new Run();
+  await run.provision();
+  await run.open("fast", 4);
+  const callers = [
+    { origin: "agent" },
+    appCaller("fast", 4),
+    { origin: "routine", routine: "tidy" },
+    { origin: "resolve" },
+    { origin: "widget", widget: "R37" },
+    { origin: "somebody" },
+    { origin: "" },
+    {},
+  ];
+  for (const caller of callers) {
+    // no caller opens a session for itself: the open it asked for is not there
+    expect(result(await run.open("fast", 7, caller)).code).toBe("permission_denied");
+    expect(result(await run.call("toy_add", {}, appCaller("fast", 7))).code).toBe("permission_denied");
+    // and none closes one or uninstalls: the host's open still works
+    expect(result(await run.call("buwiz.session.close", { open_id: b64u(new Uint8Array(16).fill(4)) }, caller)).code).toBe("permission_denied");
+    expect(result(await run.call("buwiz.uninstall", {}, caller)).code).toBe("permission_denied");
+    expect(result(await run.call("toy_add", {}, appCaller("fast", 4))).added).toBe(true);
+  }
 });
 
 test("an app reaches only the tools its certified open grants", async () => {
@@ -492,11 +522,7 @@ test("a widget call carries its origin and name, and an unknown origin is unknow
   for (const caller of [throughApp, pressed]) {
     expect(result(await run.call("toy_pin", {}, caller)).code).toBe("permission_denied");
   }
-  // the host's own tools are not a widget's: the open is still there after
-  const closed = await run.call("buwiz.session.close", { open_id: b64u(new Uint8Array(16).fill(4)) }, widget);
-  expect(result(closed).code).toBe("permission_denied");
-  expect(result(await run.call("toy_add", {}, appCaller("fast", 4))).added).toBe(true);
-  expect(run.toy.calls).toEqual(["toy_peek", "toy_pin", "toy_add"]);
+  expect(run.toy.calls).toEqual(["toy_peek", "toy_pin"]);
   // an origin this library does not know is not a crash
   const other = result(await run.call("toy_list", { whoami: true }, { origin: "somebody", plugin: "app.buwiz.toy", ts: 1 }));
   expect(other.origin).toBe("unknown");

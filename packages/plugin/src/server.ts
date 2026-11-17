@@ -338,8 +338,10 @@ export class Server<P extends Plugin = Plugin> {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return fail("invalid_args", "arguments must be a JSON object");
     const args = raw as Args;
     if (name.startsWith("buwiz.")) {
-      // the host's own calls: a generated widget never makes one (spec 16.4)
-      if (callerOf(params).origin === "widget") return fail("permission_denied", "a reserved tool is not offered to widgets");
+      // the host's own calls, which carry no caller: one that names a caller,
+      // whoever it says it is, is not the host's
+      const named = (params._meta as Record<string, unknown> | undefined)?.["buwiz/caller"];
+      if (named !== undefined && named !== null) return fail("permission_denied", "a reserved tool is the host's own to call");
       return this.#reserved(name, args);
     }
     // P7: nothing before a successful provision

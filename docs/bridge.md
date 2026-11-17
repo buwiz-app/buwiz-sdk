@@ -258,8 +258,7 @@ AI's press. Both libraries build the entry from the tool; `_meta` is shown as gi
 is left out when the tool has none.
 
 The host offers a widget only the tools whose audience names `"widget"`. Both libraries check
-it again: a call with `origin: "widget"` to any other tool, or to a reserved `buwiz.*` tool, is
-refused before the tool runs.
+it again: a call with `origin: "widget"` to any other tool is refused before the tool runs.
 
 ```rust
 use buwiz_plugin::{PressEffect, Tool};
@@ -295,7 +294,9 @@ the tool and the reason. A hand-written `_meta` gets the same check.
 ## Reserved tools (Buwiz Bot to your plugin)
 
 `lib/buwiz-plugin.mjs` implements these; you only need them if you write your
-own (spec 10).
+own (spec 10). The host makes these calls with no `buwiz/caller`. Both libraries
+and the helper refuse a reserved call that names one, so no caller can open a
+session for itself.
 
 | Tool                   | Input                                             | Answer                                                                                        |
 | ---------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
