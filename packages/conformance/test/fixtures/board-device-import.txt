@@ -1,0 +1,5 @@
+import { windowSize } from "nsh/device";
+
+export default function Board() {
+  return windowSize();
+}
