@@ -82,6 +82,24 @@ test(
 );
 
 test(
+  "a badge a tool returns passes BRG-20 when it is well formed and fails it when it is not",
+  async () => {
+    const key = (await keygen(tempDir())).path;
+    const good = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_BADGE=1"), "--json"]);
+    const goodRows = (JSON.parse(good.out) as { rows: Row[] }).rows;
+    expect(goodRows.filter((r) => r.status === "fail")).toEqual([]);
+    expect(goodRows.filter((r) => r.id === "BRG-20" && r.status === "pass").length).toBe(1);
+
+    const bad = await node(RUNNER, [...probe("--sign-with", key, "--env", "PROBE_BREAK=badge"), "--json"]);
+    const failed = (JSON.parse(bad.out) as { rows: Row[] }).rows.filter((r) => r.status === "fail");
+    expect(bad.code).toBe(1);
+    expect(failed.map((r) => r.id)).toEqual(["BRG-20"]);
+    expect(failed[0]?.note).toContain("dot is not red, amber, green or none");
+  },
+  MINUTE,
+);
+
+test(
   "a manifest signed by the signer is trusted from --key-file, or from BUWIZ_TRUST_FILE",
   async () => {
     const dir = tempDir();

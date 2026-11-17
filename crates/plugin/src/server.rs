@@ -67,7 +67,7 @@ pub struct Tool {
     pub meta: Option<Map<String, Value>>,
 }
 
-/// What an approved AI press does (spec 16.5).
+/// What an approved AI press does (spec 16.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PressEffect {
     /// The call posts something.
@@ -94,10 +94,10 @@ impl Tool {
     }
 
     /// Sets `_meta["buwiz/audience"]` to `words` (`"agent"`, `"widget"`; spec
-    /// 16.4), always as an array.
+    /// 16.5), always as an array.
     ///
     /// Naming `"agent"` on a tool that is not read-only does more than list it
-    /// for the model: by spec 16.5 the AI's press on an app's screen may then
+    /// for the model: by spec 16.6 the AI's press on an app's screen may then
     /// run that write with no Allow card. When the person should be asked each
     /// time, leave `"agent"` out and opt in with [`Tool::with_press`].
     pub fn with_audience(self, words: &[&str]) -> Self {
@@ -105,13 +105,13 @@ impl Tool {
     }
 
     /// Opts the tool in to the AI's press: `_meta["buwiz/press"]` is
-    /// `{approved: true, effect, describe}` (spec 16.5), and the person gets an
+    /// `{approved: true, effect, describe}` (spec 16.6), and the person gets an
     /// Allow card each time. `describe` names a read-only tool of the plugin;
     /// `tools/list` leaves the opt-in out (and writes a line to stderr) when it
     /// is empty or names no read-only tool of the list.
     ///
     /// A plugin MUST NOT opt in a tool that files, submits, sends, pays, voids
-    /// or reopens, whatever it is called (P5, spec 16.5); the host's name rule
+    /// or reopens, whatever it is called (P5, spec 16.6); the host's name rule
     /// is only a backstop.
     pub fn with_press(self, effect: PressEffect, describe: &str) -> Self {
         self.with_meta(
@@ -159,13 +159,13 @@ pub enum Origin {
     Routine,
     /// A command's or scope's resolve.
     Resolve,
-    /// A generated widget, on a tool offered to widgets (spec 16.4).
+    /// A generated widget, on a tool offered to widgets (spec 16.5).
     Widget,
     /// No caller, or an origin this library does not know. It only reads.
     Unknown,
 }
 
-/// The record of an AI's press: `_meta["buwiz/caller"].press` (spec 16.5).
+/// The record of an AI's press: `_meta["buwiz/caller"].press` (spec 16.6).
 /// Only the host sets it, on a call the person did not make.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Press {
@@ -224,7 +224,7 @@ pub struct Caller {
     pub routine: Option<String>,
     /// The widget's name (`R37`), for [`Origin::Widget`].
     pub widget: Option<String>,
-    /// The record of the AI's press, when the AI made the call (spec 16.5).
+    /// The record of the AI's press, when the AI made the call (spec 16.6).
     /// An `Origin::App` call that has one is a read the AI made, not the
     /// person's act.
     pub press: Option<Press>,
@@ -499,7 +499,7 @@ impl<P: Plugin> Server<P> {
     ///   know only read;
     /// - a routine's turn only reads, or calls a write its routine declares;
     /// - a generated widget reaches only a tool whose audience names
-    ///   `"widget"` (spec 16.4), read or write, and its call names no app,
+    ///   `"widget"` (spec 16.5), read or write, and its call names no app,
     ///   open or press.
     pub fn authorize(&self, tool: &Tool, caller: &Caller) -> Result<(), String> {
         let name = tool.name;

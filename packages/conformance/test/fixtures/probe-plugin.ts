@@ -5,9 +5,11 @@
 // PROBE_BREAK=fetch makes its app call fetch(), which an app must not (APP-04);
 // PROBE_BREAK=prompt makes its command answer a blank prompt (INV-10). Each
 // breaks that one rule and nothing else, which the runner then has to name.
+// PROBE_BREAK=badge makes its tools return a malformed buwiz/badge (BRG-20), PROBE_BADGE=1 a well
+// formed one made with the SDK's `badge` and `withBadge`.
 // PROBE_TOOLS=<n> gives its app n more tools to call, to exercise the runner's pace.
 
-import { type Args, type Manifest, PROTOCOL, type Plugin, type Tool, Tickets, main, ok, tsx } from "../../../plugin/src";
+import { type Args, type Manifest, PROTOCOL, type Plugin, type Tool, Tickets, badge, main, ok, tsx, withBadge } from "../../../plugin/src";
 
 const GOOD = "export default function Board() {\n  return null;\n}\n";
 const BAD = `export default function Board() {\n  fetch("https://example.invalid");\n  return null;\n}\n`;
@@ -66,7 +68,9 @@ class Probe implements Plugin {
         ? ok({ result: "choices", choices: [{ label: "milk", value: this.tickets.issue("milk") }] })
         : ok({ result: "error", message: `No item ${value.slice(0, 40)}.` });
     }
-    return ok({ items: ["milk"] });
+    const result = ok({ items: ["milk"] });
+    if (process.env.PROBE_BREAK === "badge") return { ...result, _meta: { "buwiz/badge": { app: "board", dot: "blue" } } };
+    return process.env.PROBE_BADGE === "1" ? withBadge(result, badge("board", { dot: "amber", text: "1 item" })) : result;
   }
 
   ticketTitle(ticket: string) {

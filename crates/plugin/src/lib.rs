@@ -49,6 +49,7 @@ use serde_json::{Value, json};
 
 pub mod accounts;
 pub mod b64;
+pub mod badge;
 pub mod cli;
 pub mod jcs;
 pub mod key;
@@ -59,6 +60,7 @@ pub mod testing;
 pub mod tickets;
 
 pub use accounts::{Account, Accounts, account_required};
+pub use badge::{Badge, BadgeError, Dot, with_badge};
 pub use manifest::PROTOCOL;
 pub use server::{
     Args, CERT_MAX_MS, Caller, INVALID_PARAMS, INVALID_REQUEST, MCP_PROTOCOL, METHOD_NOT_FOUND,

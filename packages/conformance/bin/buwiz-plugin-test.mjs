@@ -427,14 +427,14 @@ export async function runPluginTest(o) {
     else skip("MAN-10", "tool names", "the manifest did not verify");
 
     // the declarations the host reads to keep a tool off the model's list or to take the AI's press
-    await run("MAN-15", "a tool that declares buwiz/press with approved: true can take the AI's press (16.5)", () => {
+    await run("MAN-15", "a tool that declares buwiz/press with approved: true can take the AI's press (16.6)", () => {
       const bad = own.map((t) => [t.name, pressProblem(t)]).filter(([, why]) => why);
 
       expect(bad.length === 0, bad.map(([name, why]) => `${name}: ${why}`).join("; "));
 
       return `${own.filter((t) => t._meta?.["buwiz/press"]?.approved === true).length} declared`;
     });
-    await run("MAN-16", "a tool's buwiz/audience, when present, is an array (16.4)", () => {
+    await run("MAN-16", "a tool's buwiz/audience, when present, is an array (16.5)", () => {
       const bad = own.filter((t) => audienceProblem(t));
 
       expect(bad.length === 0, `${bad.map((t) => t.name).join(", ")}: buwiz/audience is not an array, so the host keeps the tool off the model's list`);
@@ -806,7 +806,7 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
       sessions.appSource({ plugin: m.id, app: a.id }).then(() => ""),
     );
 
-  // BRG-03, BRG-04, BRG-06: a session per app with tools, one signed call per tool
+  // BRG-03, BRG-04, BRG-06, BRG-20: a session per app with tools, one signed call per tool
   const withTools = (m.apps || []).filter((a) => a.permissions?.tools?.length);
 
   if (!withTools.length) skip("BRG-03", "signed calls", "no app has permissions.tools");
@@ -820,6 +820,7 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 
     if (!open) continue;
     let first = null;
+    const badges = [];
     const pace = pacer(MAX_PER_SECOND, RATE_WINDOW_MS);
 
     for (const tool of a.permissions.tools)
@@ -835,9 +836,18 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 
         // an isError answer still went through the signed path
         expect(code === "resolved" || code === "tool_error", `${tool}: ${code}`);
+        // what the host made of a badge the result carried (16.4), checked below
+        const badge = sessions.takeBadgeProblem();
+
+        if (badge) badges.push(`${tool}: ${badge}`);
 
         return code === "tool_error" ? "answered isError for {} args" : "";
       });
+
+    // BRG-20: a badge a tool returns is well formed; the host drops one that is not, and the result still goes through
+    await run("BRG-20", `${a.id}: any buwiz/badge its tools return is well formed (16.4)`, () =>
+      expect(!badges.length, `malformed, so the host drops it: ${badges.join("; ")}`),
+    );
 
     if (!first) continue;
     await run("BRG-04", `${a.id}: the same envelope sent again is replayed`, async () =>

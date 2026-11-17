@@ -32,7 +32,7 @@ ships apps into Buwiz Bot. Read [the overview](../../docs/overview.md) first
 
 3. **Write your tools** in `server.mjs`: each is
    `{name, description, inputSchema, annotations, _meta?, run(args, caller)}`
-   (`_meta` declares a tool's audience and the AI's press: spec 16.4 and 16.5).
+   (`_meta` declares a tool's audience and the AI's press: spec 16.5 and 16.6).
    Answer with `ok(data)` or `fail(code, message)`. Mark read-only tools
    `readOnlyHint: true`. Check every ticket argument against your own store
    ([docs/security.md](../../docs/security.md), P1).

@@ -925,7 +925,7 @@ limits.
 | Call                      | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `buwiz.actions(list)`     | At most 3 objects `{id, label, primary?, disabled?}`, no other key. `id`: 1 to 64 of `[A-Za-z0-9_.:-]`, unique. `label`: trimmed, 1 to 24 characters, one line (no control characters). At most one `primary`. `[]` removes the footer; each call replaces it. Drawn as pill buttons under the app, right-aligned, the primary first.                                                                                                   |
-| `buwiz.onAction(handler)` | A press of an enabled button in the current list calls every handler with its `id`. Returns a function that removes the handler. A handler that is not a function throws `invalid_args`. The press does nothing else; the app does the work with its own tools. Nothing is delivered after the open ends. The AI does not press these buttons: its presses reach only the named buttons and fields of a full-screen app (section 16.5). |
+| `buwiz.onAction(handler)` | A press of an enabled button in the current list calls every handler with its `id`. Returns a function that removes the handler. A handler that is not a function throws `invalid_args`. The press does nothing else; the app does the work with its own tools. Nothing is delivered after the open ends. The AI does not press these buttons: its presses reach only the named buttons and fields of a full-screen app (section 16.6). |
 | `buwiz.meta(meta)`        | `{text, pill?}`, no other key, or `null` to remove. `text`: trimmed, 1 to 32 characters, one line. Dim text after the title, or a pill.                                                                                                                                                                                                                                                                                                 |
 | `buwiz.settle(text)`      | `text`: trimmed, 1 to 120 characters, one line. The card collapses to one dim line reading `text`; the app unmounts and its session closes. No undo; a new open is a new card.                                                                                                                                                                                                                                                          |
 
@@ -957,7 +957,7 @@ For every `buwiz.call` and `buwiz.preview` the host builds, in native code:
 
 `actor` says who made the call: `"person"` for the person's own act, `"agent"` for a call the AI made while it drives
 the app's screen. The broker treats any other value, or none, as `"agent"`. When the actor is the AI, the host MUST add
-`press`, the record of that press (section 16.5), and MUST NOT add one to the person's call. The host's own native code sets both under the signature; an app
+`press`, the record of that press (section 16.6), and MUST NOT add one to the person's call. The host's own native code sets both under the signature; an app
 passes the bridge a tool and its arguments and nothing else, and a plugin never sets them.
 
 A preview adds `"purpose": "preview"`; no other `purpose` exists. `sig = Ed25519Sign(session key,
@@ -984,7 +984,7 @@ JCS-signable, is `invalid_args`.
 Then: a `purpose` other than `"preview"` is `invalid_args`, and `"preview"` from an app without
 `permissions.preview` is `permission_denied`; `args` MUST be an object of at most 256 KiB (`invalid_args`); the
 tool MUST be in the plugin's current `tools/list` (`not_found`); a call whose actor is not the person reaches a
-tool that is not read-only only as section 16.5 says (`permission_denied`); the rate and concurrency limits of
+tool that is not read-only only as section 16.6 says (`permission_denied`); the rate and concurrency limits of
 section 13.2 apply. Only then does the broker call the tool, with `_meta["buwiz/caller"]` (section 16.1). Its answer is
 checked as section 13.2, with the preview's `max_bytes` in place of 1 MiB for a preview.
 
@@ -1065,7 +1065,8 @@ resolve `open` produced by the agent or a routine is treated as a tool result (s
 An attachment is a canonical token with the plugin id, the plugin's major version and title at attach time,
 the scope and the chat. Attachments pin the ticket and the plugin major, not an app fingerprint. When the
 plugin's major changes the attachment shows "needs update" and is not sent to the model. Pins store `{plugin
-id, app id, ticket?, placement}` and open the app's current version. Both go on uninstall.
+id, app id, ticket?, placement}` and open the app's current version. Both go on uninstall. A pin shows
+the badge its plugin set for its app (section 16.4).
 
 ### 15.6 Links
 
@@ -1088,7 +1089,7 @@ Every `tools/call` to a plugin tool carries `_meta["buwiz/caller"]`:
 | `"agent"`   | The model; a bridge write the AI made    | `plugin`, `ts`; in a routine's turn calling the routine's own plugin also `routine`, and `instance` and `params` (section 19); a bridge write also `app`, `open_id` and `press` |
 | `"routine"` | A routine's query                        | `plugin`, `ts`, `routine`, `instance`, `params`                                                                                                                                 |
 | `"resolve"` | A resolve tool                           | `plugin`, `ts`                                                                                                                                                                  |
-| `"widget"`  | A generated widget (section 16.4)        | `plugin`, `widget`, `ts`                                                                                                                                                        |
+| `"widget"`  | A generated widget (section 16.5)        | `plugin`, `widget`, `ts`                                                                                                                                                        |
 
 `ts` is unix ms. The plugin uses it to authorize (section 23.2). The host never shows it to the model.
 
@@ -1099,7 +1100,7 @@ while the AI drives it. A call with `origin: "app"` and a `press` is such a read
 tool marked read-only MUST change nothing (P8).
 
 `press` is present on a bridge call the AI made, reads included, and absent on the person's calls. It is the record
-of section 16.5, and the plugin MAY read it. The host sets `origin` and `press` itself; no plugin or app can claim
+of section 16.6, and the plugin MAY read it. The host sets `origin` and `press` itself; no plugin or app can claim
 either.
 
 ### 16.2 `buwiz/open` (plugin to host)
@@ -1135,7 +1136,56 @@ A tool result may offer an app:
 and `prompt` (trimmed), cut to 40 and 200 characters, and shows them as chips under the answer; a tap sends
 `prompt` as the person's message. Ignored on `isError` results.
 
-### 16.4 `buwiz/audience` (plugin, in `tools/list`)
+### 16.4 `buwiz/badge` (plugin to host)
+
+A tool result may put a small badge on the pins of one of the plugin's apps: a dot and a few characters, so the
+person sees a state ("2 due", a red dot) without opening the app. A badge rides on any tool result, so a routine's
+query (section 19) keeps it up to date while the app is closed. It needs no call of its own.
+
+```json
+"_meta": { "buwiz/badge": { "app": "board", "dot": "amber", "text": "18h" } }
+```
+
+To take a badge away, send the same key with `clear`:
+
+```json
+"_meta": { "buwiz/badge": { "app": "board", "clear": true } }
+```
+
+| Field    | Rule                                                                                                                                     |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `app`    | One of this plugin's apps. Another plugin's app, or an id the manifest does not have, makes the badge malformed.                         |
+| `dot`    | `"red"`, `"amber"`, `"green"` or `"none"`. Optional.                                                                                     |
+| `text`   | A string, trimmed, 0 to 8 characters (Unicode characters, not bytes), one line: no control character or line break. Optional.            |
+| `ticket` | Optional; ticket grammar. Narrows the badge to the pins of `app` that carry that ticket. Without it the badge is for every pin of `app`. |
+| `clear`  | `true` removes the badge for `app` and `ticket`. With `clear`, no `dot` and no `text`; `clear: false` is malformed.                      |
+
+- A badge that sets neither `dot` nor `text`, and is not a clear, is malformed. Text that is too long, or has a
+  control character or a line break, is malformed; the host does not cut it.
+- **Who may set it.** Any plugin that is approved and enabled, for its own apps only, from any origin's call: the
+  model's, a routine's, an app's, a widget's, a resolve. Ignored on `isError` results.
+- **What the host does with a malformed badge.** It drops the badge, logs it once per plugin and reason, and the
+  result still goes through, as for a malformed `buwiz/open`.
+- **One badge per app and ticket.** The host keeps one badge per (plugin, app, ticket or none), and a new one
+  replaces the old one whole: it is not merged with it. A badge with `dot: "none"` and no text shows nothing, and
+  is the same as a clear. A clear with a `ticket` removes that ticket's badge and leaves the others.
+- **Where it is shown.** On each pin of `app`, beside the pin's title (the dot, in the host's red, amber or green
+  status colour, then the text, small and dim). A pin with a ticket shows the badge for its ticket, else the badge
+  for the app; a pin without a ticket shows the badge for the app. The badge takes no room from the pin: the pin
+  is the size it is without one, and its title does not move. Nothing animates, nothing sounds, a press on the pin
+  does what it does without a badge. The pin's accessible name carries the state in words ("Tax forms, status red, 2 due"), so the
+  colour is never the only signal. It is not shown on an app's card, the host's icon, a notification or a widget.
+- **Kept and sent.** The host keeps badges across its own restarts and removes them when the plugin is uninstalled
+  or the app leaves the manifest. It lists them with the plugin, so an app that starts later shows them, and tells a
+  running app of each change as it happens. A plugin that changes one badge more than once a second has its changes
+  collapsed to the latest value.
+- **No consent.** A badge asks for nothing (section 17): it shows a dot beside a pin the person made, for a plugin
+  they approved, and a plugin keeps subject data out of it (P12).
+- **What a badge must not carry.** The text and the dot appear on the host's screen, outside the app: no subject data
+  (a name, a tax identification number, an amount, a ticket's value). A state and a count ("2 due", "18h") are what
+  it is for (section 23.2, P12).
+
+### 16.5 `buwiz/audience` (plugin, in `tools/list`)
 
 A tool definition's `_meta["buwiz/audience"]` is an array of audience words. `"agent"` and `"widget"` are the words
 this section defines; other words (for example `"app"`) mean nothing to the host and are ignored. The host reads
@@ -1144,7 +1194,7 @@ the array in three places:
 - The model's surface (section 18.2). An array that leaves out `"agent"` (for example `["app"]`) keeps the tool off the
   surface, and model calls of it are refused. An audience that is present but is not an array (a string, an object, a
   number or `null`) does the same. An absent audience leaves the tool on the surface.
-- An AI's press through an app's screen (section 16.5). A write is open to agents only when the array contains
+- An AI's press through an app's screen (section 16.6). A write is open to agents only when the array contains
   `"agent"`. An absent audience is not open.
 - Generated widgets (below). A tool is offered to widgets only when the array contains `"widget"`. An absent audience
   is not offered.
@@ -1173,13 +1223,13 @@ through sources; a plugin offers tools to widgets by marking them `"widget"`:
 - A read-only tool whose audience holds both `"widget"` and `"agent"` can be read by the model through a source; that call arrives
   as `origin: "agent"`, without `app` or `open_id`. A tool offered only to widgets is not.
 
-### 16.5 `buwiz/press` (plugin, in `tools/list`)
+### 16.6 `buwiz/press` (plugin, in `tools/list`)
 
 The AI can drive a full-screen app's screen: it presses a named button or fills a named field, and the app's code
 calls tools. Such a call is signed with `actor: "agent"` (section 14.1). A tool that is not read-only receives it
 only when one of these holds; otherwise the broker answers `permission_denied` and sends nothing:
 
-- The tool is open to agents: its `_meta["buwiz/audience"]` contains `"agent"` (section 16.4).
+- The tool is open to agents: its `_meta["buwiz/audience"]` contains `"agent"` (section 16.5).
 - The tool opted in with `_meta["buwiz/press"]` and the person said yes to that exact call.
 
 A read (`annotations.readOnlyHint: true`) always passes.
@@ -1244,9 +1294,10 @@ over the card they saw; `at` is unix ms. The host sends an opted-in call only wi
 to agents can also receive `ai_approved` when the person has set the host to ask first. A record of any other shape is
 dropped, and `press` is absent. The `describe` read arrives as a read with `{by: "ai"}`.
 
-### 16.6 Stripping
+### 16.7 Stripping
 
-The host strips `_meta` from every tool result before the model or an app sees it.
+The host strips `_meta` from every tool result before the model or an app sees it. A `buwiz/badge` is read first
+(section 16.4) and stripped with the rest.
 
 ## 17. Consent
 
@@ -1267,7 +1318,8 @@ The host strips `_meta` from every tool result before the model or an app sees i
 | A generated widget's first use of a source's tools                                               | A card per widget and source with read and write as separate answers; nothing is sent until answered. |
 | The AI's press of a tool that opted in with `buwiz/press`                                        | A card with Not now and Allow for that one call; nothing is sent until the person presses Allow.      |
 
-Declining changes nothing: no chat, attachment, pin or open is made before the person agrees.
+Declining changes nothing: no chat, attachment, pin or open is made before the person agrees. A badge a plugin
+puts on a pin (section 16.4) is not in the table: it asks for nothing.
 
 ## 18. Agent integration
 
@@ -1312,8 +1364,8 @@ on a routine that needs consent (section 19.3).
 
 It can drive a full-screen app's screen, but only by a named button or a named field: it cannot press an unnamed
 element, a position on the screen, a key or the footer buttons of an inline card. What its press calls reaches a
-plugin as section 16.5 says: a read passes, a write only if the tool is open to agents or opted in and the person said
-yes to that call; a tool whose name contains one of the letter sequences section 16.5 lists (filing, sending,
+plugin as section 16.6 says: a read passes, a write only if the tool is open to agents or opted in and the person said
+yes to that call; a tool whose name contains one of the letter sequences section 16.6 lists (filing, sending,
 paying and the like) cannot opt in. It cannot press a button of the Bot itself.
 
 ## 19. Routines
@@ -1537,8 +1589,8 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 | H12 | Uninstall leaves no key, account, file, pin, attachment or storage behind.                      | 9.6        |
 | H13 | A preview document is static and never handed to the app.                                       | 13.5       |
 | H14 | Account tokens reach only the plugin, never the model, chat, logs or apps.                      | 20         |
-| H15 | A write the AI makes through an app reaches a tool only as section 16.5 says.                   | 14.2, 16.5 |
-| H16 | A generated widget calls only tools offered to widgets, and only what the person allowed.       | 16.4, 17   |
+| H15 | A write the AI makes through an app reaches a tool only as section 16.6 says.                   | 14.2, 16.6 |
+| H16 | A generated widget calls only tools offered to widgets, and only what the person allowed.       | 16.5, 17   |
 
 ### 23.2 What the plugin MUST do
 
@@ -1548,13 +1600,14 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 | P2  | Issue tickets as random values and keep the subject map on the plugin's side.                                                                                                                                        |
 | P3  | Return only a title from `buwiz.ticket.resolve`.                                                                                                                                                                     |
 | P4  | Never log the plugin key, an account token, a subject, tool arguments or `buwiz.provision`'s content.                                                                                                                |
-| P5  | Keep side effects (filing, sending, paying) behind an explicit argument or confirmation the model cannot supply alone. Never opt a filing, sending or paying tool in to the AI's press (section 16.5).               |
+| P5  | Keep side effects (filing, sending, paying) behind an explicit argument or confirmation the model cannot supply alone. Never opt a filing, sending or paying tool in to the AI's press (section 16.6).               |
 | P6  | No side effects for `origin: "resolve"` or `"routine"`. In a routine's turn allow a write only when the routine lists it in `writes`, only within the instance's params, and only on evidence the routine was given. |
 | P7  | Answer `buwiz.provision` before any other tool; refuse every other tool until it succeeds.                                                                                                                           |
 | P8  | Mark read-only tools `readOnlyHint: true`, and only those: the host passes such a tool every call, the AI's too.                                                                                                     |
 | P9  | Keep model text within the caps of section 18.3 and never tell the model to bypass consent.                                                                                                                          |
 | P10 | Do not read the host's files or environment, or other plugins' data.                                                                                                                                                 |
 | P11 | Keep user-facing messages free of subject data.                                                                                                                                                                      |
+| P12 | Keep a `buwiz/badge` free of subject data: a state and a count ("2 due", "18h"), never a name, tax identification number, amount or ticket value (section 16.4).                                                     |
 
 ## 24. Limits
 
@@ -1609,6 +1662,7 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 | Resolve `prompt`                                    | 4000 characters, commands only                                                            |
 | Ticket title                                        | 120 characters                                                                            |
 | `buwiz/suggest`                                     | 3; label 40, prompt 200 characters                                                        |
+| `buwiz/badge`                                       | text 8 characters, one line; one event a second per badge                                 |
 | Answer cards per answer                             | 1 main, 2 small; chips after 5 messages                                                   |
 | Error message                                       | 500 characters                                                                            |
 | Link / props in a link                              | 2048 characters / 1024 bytes                                                              |
@@ -1773,8 +1827,8 @@ numbering is an ID not in use, and an ID is never reused for another requirement
 | MAN-12 | both   | An unknown key in a `routines[]` entry, `needs` among them, is refused.                                                                                                               | 3.4, 6.7       |
 | MAN-13 | both   | `routines[].writes` names the plugin's own tools, each once, never a reserved or `readOnlyHint: true` tool, each in `tools/list`.                                                     | 6.2, 6.7       |
 | MAN-14 | both   | `routines[].params` is a small JSON Schema whose properties follow its rules and are not keys of `query.args`.                                                                        | 19.2           |
-| MAN-15 | plugin | A tool that declares `buwiz/press` with `approved: true` can take the AI's press: its name passes the rule of section 16.5, `effect` is `post` or `close`, and `describe` is present. | 16.5           |
-| MAN-16 | plugin | A tool's `buwiz/audience`, when present, is an array.                                                                                                                                 | 16.4           |
+| MAN-15 | plugin | A tool that declares `buwiz/press` with `approved: true` can take the AI's press: its name passes the rule of section 16.6, `effect` is `post` or `close`, and `describe` is present. | 16.6           |
+| MAN-16 | plugin | A tool's `buwiz/audience`, when present, is an array.                                                                                                                                 | 16.5           |
 | MAN-21 | both   | An app is a TSX app or a native screen, never both or neither; a native screen is refused under a key that is not first party.                                                        | 6.8, 11.3      |
 
 ### C.2 Apps (APP)
@@ -1811,6 +1865,7 @@ numbering is an ID not in use, and an ID is never reused for another requirement
 | BRG-15 | host | `buwiz.attach` without consent rejects `consent_declined` and leaves the chat unchanged.                                                       | 13.5, 17         |
 | BRG-16 | host | Storage holds its key, value, quota and key-count limits, and one app cannot read another's keys.                                              | 21               |
 | BRG-19 | host | `buwiz.actions`, `onAction`, `meta` and `settle` are present without permissions, hold their rules, and an inline card draws and settles them. | 12, 13.6         |
+| BRG-20 | both | A tool result's `buwiz/badge`, when present, is well formed (section 16.4): the host drops a malformed one and the result still goes through.  | 16.4             |
 
 ### C.4 Reserved tools (RSV)
 

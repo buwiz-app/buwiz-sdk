@@ -83,28 +83,28 @@ export interface Tool {
   _meta?: Record<string, Json>;
 }
 
-/** What an approved AI press does (spec 16.5). */
+/** What an approved AI press does (spec 16.6). */
 export type PressEffect = "post" | "close";
 
 const withMeta = (tool: Tool, key: string, value: Json): Tool => ({ ...tool, _meta: { ...tool._meta, [key]: value } });
 
 /** `tool` with `_meta["buwiz/audience"]` set to `words` ("agent", "widget";
- *  spec 16.4), always as an array.
+ *  spec 16.5), always as an array.
  *
  *  Naming "agent" on a tool that is not read-only does more than list it for
- *  the model: by spec 16.5 the AI's press on an app's screen may then run that
+ *  the model: by spec 16.6 the AI's press on an app's screen may then run that
  *  write with no Allow card. When the person should be asked each time, leave
  *  "agent" out and opt in with `withPress`. */
 export const withAudience = (tool: Tool, words: string[]): Tool => withMeta(tool, "buwiz/audience", [...words]);
 
 /** `tool` opted in to the AI's press: `_meta["buwiz/press"]` is
- *  `{approved: true, effect, describe}` (spec 16.5), and the person gets an
+ *  `{approved: true, effect, describe}` (spec 16.6), and the person gets an
  *  Allow card each time. `describe` names a read-only tool of the plugin;
  *  tools/list leaves the opt-in out (and writes a line to stderr) when it is
  *  empty or names no read-only tool of the list.
  *
  *  A plugin MUST NOT opt in a tool that files, submits, sends, pays, voids or
- *  reopens, whatever it is called (P5, spec 16.5); the host's name rule is only
+ *  reopens, whatever it is called (P5, spec 16.6); the host's name rule is only
  *  a backstop. */
 export const withPress = (tool: Tool, effect: PressEffect, describe: string): Tool => withMeta(tool, "buwiz/press", { approved: true, effect, describe });
 
@@ -137,7 +137,7 @@ function listedMeta(tool: Tool, tools: Tool[]): Record<string, Json> | undefined
  *  origin this library does not know; it only reads. */
 export type Origin = "app" | "agent" | "routine" | "resolve" | "widget" | "unknown";
 
-/** The record of an AI's press: _meta["buwiz/caller"].press (spec 16.5). Only
+/** The record of an AI's press: _meta["buwiz/caller"].press (spec 16.6). Only
  *  the host sets it, on a call the person did not make. */
 export type Press =
   | { by: "ai"; who: string }
@@ -163,9 +163,9 @@ export interface Caller {
   openId?: string;
   /** The routine whose turn or query this is. */
   routine?: string;
-  /** The widget's name (R37), for "widget" (spec 16.4). */
+  /** The widget's name (R37), for "widget" (spec 16.5). */
   widget?: string;
-  /** The record of the AI's press, when the AI made the call (spec 16.5). An
+  /** The record of the AI's press, when the AI made the call (spec 16.6). An
    *  "app" call that has one is a read the AI made, not the person's act. */
   press?: Press;
   /** `account`'s live token: its "default" sign-in, else any live one.
@@ -377,7 +377,7 @@ export class Server<P extends Plugin = Plugin> {
    *    only read;
    *  - a routine's turn only reads, or calls a write its routine declares;
    *  - a generated widget reaches only a tool whose audience names "widget"
-   *    (spec 16.4), read or write, and its call names no app, open or press. */
+   *    (spec 16.5), read or write, and its call names no app, open or press. */
   authorize(tool: Tool, caller: Caller): string | undefined {
     const served = this.served.value();
     if (caller.origin === "widget") {
