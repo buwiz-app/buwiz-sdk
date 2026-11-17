@@ -232,9 +232,11 @@ test("a reserved tool is the host's own, and a call that names a caller is refus
     // no caller opens a session for itself: the open it asked for is not there
     expect(result(await run.open("fast", 7, caller)).code).toBe("permission_denied");
     expect(result(await run.call("toy_add", {}, appCaller("fast", 7))).code).toBe("permission_denied");
-    // and none closes one or uninstalls: the host's open still works
-    expect(result(await run.call("buwiz.session.close", { open_id: b64u(new Uint8Array(16).fill(4)) }, caller)).code).toBe("permission_denied");
-    expect(result(await run.call("buwiz.uninstall", {}, caller)).code).toBe("permission_denied");
+    // and none closes one, uninstalls, pushes an account or resolves a ticket:
+    // every reserved name is refused, and the host's open still works
+    for (const name of RESERVED) {
+      expect(result(await run.call(name, { open_id: b64u(new Uint8Array(16).fill(4)) }, caller)).code).toBe("permission_denied");
+    }
     expect(result(await run.call("toy_add", {}, appCaller("fast", 4))).added).toBe(true);
   }
 });

@@ -364,14 +364,10 @@ fn a_reserved_tool_is_the_hosts_own_and_a_call_that_names_a_caller_is_refused() 
         assert_eq!(result(&opened)["code"], "permission_denied", "{caller}");
         let forged = run.call("toy_add", json!({}), app_caller("fast", 7));
         assert_eq!(result(&forged)["code"], "permission_denied", "{caller}");
-        // and none closes one or uninstalls: the host's open still works
-        for (name, args) in [
-            (
-                "buwiz.session.close",
-                json!({ "open_id": b64::encode(&[4; 16]) }),
-            ),
-            ("buwiz.uninstall", json!({})),
-        ] {
+        // and none closes one, uninstalls, pushes an account or resolves a
+        // ticket: every reserved name is refused, and the host's open still works
+        for name in buwiz_plugin::RESERVED {
+            let args = json!({ "open_id": b64::encode(&[4; 16]) });
             let refused = run.call(name, args, caller.clone());
             assert_eq!(
                 result(&refused)["code"],

@@ -88,6 +88,12 @@ test(
       expect(by("hello_post")._meta).toEqual({ "buwiz/press": { approved: true, effect: "post", describe: "hello_peek" } });
       expect(by("hello_post").annotations?.readOnlyHint).toBe(false);
       expect(by("hello_raw")._meta).toEqual({ "vendor/x": 1 });
+      // a reserved tool is the host's own: a call that names a caller is refused before
+      // anything else, and one that names none goes on to the helper's own rules
+      const named = await client.callTool({ name: "buwiz.session.close", arguments: {}, _meta: { "buwiz/caller": { origin: "agent" } } });
+      expect(named.isError).toBe(true);
+      expect((named.structuredContent as { code: string }).code).toBe("permission_denied");
+      await expect(client.callTool({ name: "buwiz.session.close", arguments: {} })).rejects.toThrow("buwiz.provision must come first");
     } finally {
       await client.close();
     }

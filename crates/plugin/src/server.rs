@@ -235,6 +235,16 @@ pub struct Caller {
 }
 
 impl Caller {
+    /// Whether a `tools/call` names a caller at all: `_meta["buwiz/caller"]`
+    /// is there and not null, whatever it says. The host's own reserved
+    /// calls name none.
+    fn named(params: &Value) -> bool {
+        params
+            .get("_meta")
+            .and_then(|meta| meta.get("buwiz/caller"))
+            .is_some_and(|caller| !caller.is_null())
+    }
+
     /// `_meta["buwiz/caller"]` of a `tools/call`.
     pub fn of(params: &Value) -> Self {
         let caller = params
@@ -456,11 +466,7 @@ impl<P: Plugin> Server<P> {
         if name.starts_with("buwiz.") {
             // the host's own calls, which carry no caller: one that names a
             // caller, whoever it says it is, is not the host's
-            if params
-                .get("_meta")
-                .and_then(|meta| meta.get("buwiz/caller"))
-                .is_some_and(|caller| !caller.is_null())
-            {
+            if Caller::named(params) {
                 return Ok(fail(
                     "permission_denied",
                     "a reserved tool is the host's own to call",
