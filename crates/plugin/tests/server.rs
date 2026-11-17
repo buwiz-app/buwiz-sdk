@@ -5,7 +5,8 @@
 use buwiz_plugin::key::PluginKey;
 use buwiz_plugin::manifest::{self, Served};
 use buwiz_plugin::{
-    Args, Caller, Plugin, Press, Server, Tickets, Tool, account_required, b64, fail, jcs, ok,
+    Args, Caller, Plugin, Press, PressEffect, Server, Tickets, Tool, account_required, b64, fail,
+    jcs, ok,
 };
 use serde_json::{Value, json};
 
@@ -60,19 +61,86 @@ impl Plugin for Toy {
                 description: "List.",
                 input_schema: object.clone(),
                 read_only: true,
+                meta: None,
             },
             Tool {
                 name: "toy_add",
                 description: "Add.",
                 input_schema: object.clone(),
                 read_only: false,
+                meta: None,
             },
             Tool {
                 name: "toy_resolve",
                 description: "Resolve.",
-                input_schema: object,
+                input_schema: object.clone(),
                 read_only: true,
+                meta: None,
             },
+            Tool {
+                name: "toy_peek",
+                description: "Peek.",
+                input_schema: object.clone(),
+                read_only: true,
+                meta: None,
+            }
+            .with_audience(&["agent", "widget"]),
+            Tool {
+                name: "toy_post",
+                description: "Post.",
+                input_schema: object.clone(),
+                read_only: false,
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Post, "toy_peek"),
+            Tool {
+                name: "toy_raw",
+                description: "Raw.",
+                input_schema: object.clone(),
+                read_only: false,
+                meta: Some(
+                    json!({ "buwiz/audience": ["agent"], "vendor/x": 1 })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            },
+            Tool {
+                name: "toy_press_empty",
+                description: "A.",
+                input_schema: object.clone(),
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Post, ""),
+            Tool {
+                name: "toy_press_write",
+                description: "B.",
+                input_schema: object.clone(),
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Post, "toy_add"),
+            Tool {
+                name: "toy_press_none",
+                description: "C.",
+                input_schema: object,
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Close, "toy_gone"),
+            Tool {
+                name: "toy_pin",
+                description: "Pin.",
+                input_schema: json!({ "type": "object" }),
+                ..Tool::default()
+            }
+            .with_audience(&["widget"]),
+            Tool {
+                name: "toy_look",
+                description: "Look.",
+                input_schema: json!({ "type": "object" }),
+                read_only: true,
+                ..Tool::default()
+            }
+            .with_audience(&["agent"]),
         ]
     }
 
@@ -179,6 +247,11 @@ impl Run {
     }
 
     fn open(&mut self, app: &str, open_byte: u8) -> Value {
+        self.open_as(app, open_byte, json!(null))
+    }
+
+    /// `buwiz.session.open` as `caller` makes it; the host names no caller.
+    fn open_as(&mut self, app: &str, open_byte: u8, caller: Value) -> Value {
         let entry = manifest::app(&Toy::manifest(Toy::RELEASE_KEY_ID), app)
             .cloned()
             .unwrap_or(json!({}));
@@ -189,7 +262,7 @@ impl Run {
                 "perms_sha256": manifest::permissions_digest(&entry).unwrap(),
                 "not_after": now() + 3_600_000,
             }),
-            json!(null),
+            caller,
         )
     }
 }
@@ -268,6 +341,43 @@ fn a_session_certificate_is_the_request_signed_with_the_provisioned_key() {
         json!(null),
     );
     assert_eq!(wrong["result"]["isError"], true);
+}
+
+#[test]
+fn a_reserved_tool_is_the_hosts_own_and_a_call_that_names_a_caller_is_refused() {
+    let mut run = Run::new();
+    run.provision();
+    run.open("fast", 4);
+    let callers = [
+        json!({ "origin": "agent" }),
+        app_caller("fast", 4),
+        json!({ "origin": "routine", "routine": "tidy" }),
+        json!({ "origin": "resolve" }),
+        json!({ "origin": "widget", "widget": "R37" }),
+        json!({ "origin": "somebody" }),
+        json!({ "origin": "" }),
+        json!({}),
+    ];
+    for caller in callers {
+        // no caller opens a session for itself: the open it asked for is not there
+        let opened = run.open_as("fast", 7, caller.clone());
+        assert_eq!(result(&opened)["code"], "permission_denied", "{caller}");
+        let forged = run.call("toy_add", json!({}), app_caller("fast", 7));
+        assert_eq!(result(&forged)["code"], "permission_denied", "{caller}");
+        // and none closes one, uninstalls, pushes an account or resolves a
+        // ticket: every reserved name is refused, and the host's open still works
+        for name in buwiz_plugin::RESERVED {
+            let args = json!({ "open_id": b64::encode(&[4; 16]) });
+            let refused = run.call(name, args, caller.clone());
+            assert_eq!(
+                result(&refused)["code"],
+                "permission_denied",
+                "{name} {caller}"
+            );
+        }
+        let still = run.call("toy_add", json!({}), app_caller("fast", 4));
+        assert_eq!(result(&still)["added"], true, "{caller}");
+    }
 }
 
 #[test]
@@ -523,7 +633,53 @@ fn lists_tools_and_serves_the_manifest_and_tsx_sources_only() {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
     assert_eq!(&names[..7], buwiz_plugin::RESERVED);
-    assert_eq!(&names[7..], ["toy_list", "toy_add", "toy_resolve"]);
+    assert_eq!(
+        &names[7..],
+        [
+            "toy_list",
+            "toy_add",
+            "toy_resolve",
+            "toy_peek",
+            "toy_post",
+            "toy_raw",
+            "toy_press_empty",
+            "toy_press_write",
+            "toy_press_none",
+            "toy_pin",
+            "toy_look"
+        ]
+    );
+
+    // a tool's _meta is shown as declared, and the key is absent without one
+    let by = |name: &str| {
+        tools["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert!(by("toy_list").get("_meta").is_none());
+    assert_eq!(by("toy_list")["annotations"]["readOnlyHint"], true);
+    assert_eq!(
+        by("toy_peek")["_meta"],
+        json!({ "buwiz/audience": ["agent", "widget"] })
+    );
+    assert_eq!(by("toy_peek")["annotations"]["readOnlyHint"], true);
+    assert_eq!(
+        by("toy_post")["_meta"],
+        json!({ "buwiz/press": { "approved": true, "effect": "post", "describe": "toy_peek" } })
+    );
+    assert_eq!(by("toy_post")["annotations"]["readOnlyHint"], false);
+    assert_eq!(
+        by("toy_raw")["_meta"],
+        json!({ "buwiz/audience": ["agent"], "vendor/x": 1 })
+    );
+    // a press opt-in whose describe is empty, a write or no tool is left out
+    for name in ["toy_press_empty", "toy_press_write", "toy_press_none"] {
+        assert!(by(name).get("_meta").is_none(), "{name}");
+    }
 
     let resources = run.rpc("resources/list", json!({}));
     let uris: Vec<&str> = resources["result"]["resources"]
@@ -636,12 +792,30 @@ fn a_widget_call_carries_its_origin_and_name_and_an_unknown_origin_is_unknown() 
     let mut run = Run::new();
     run.provision();
     let widget = json!({ "origin": "widget", "plugin": Toy::ID, "widget": "R37", "ts": 1 });
-    let who = run.call("toy_list", json!({ "whoami": true }), widget.clone());
+    let who = run.call("toy_peek", json!({ "whoami": true }), widget.clone());
     assert_eq!(result(&who)["origin"], "widget");
     assert_eq!(result(&who)["widget"], "R37");
-    // a widget the person allowed to write reaches a write tool
-    let added = run.call("toy_add", json!({}), widget);
-    assert_eq!(result(&added)["added"], true);
+    // a widget the person allowed to write reaches a write offered to widgets
+    let pinned = run.call("toy_pin", json!({}), widget.clone());
+    assert_eq!(result(&pinned)["text"], "milk");
+    // a tool that is not offered to widgets is refused, read or write,
+    // whatever else its audience names
+    for tool in ["toy_list", "toy_add", "toy_raw", "toy_post", "toy_look"] {
+        let refused = run.call(tool, json!({}), widget.clone());
+        assert_eq!(result(&refused)["code"], "permission_denied", "{tool}");
+    }
+    // a widget's call names no app, open or press: one that does is refused,
+    // even for a tool offered to widgets and an open this process certified
+    run.open("fast", 4);
+    let mut through_app = app_caller("fast", 4);
+    through_app["origin"] = json!("widget");
+    let mut pressed = widget.clone();
+    pressed["press"] = json!({ "by": "ai", "who": "agent.example" });
+    for caller in [through_app, pressed] {
+        let refused = run.call("toy_pin", json!({}), caller);
+        assert_eq!(result(&refused)["code"], "permission_denied");
+    }
+    assert_eq!(run.server.plugin().calls, ["toy_peek", "toy_pin"]);
     // an origin this library does not know is not a crash
     let other = json!({ "origin": "somebody", "plugin": Toy::ID, "ts": 1 });
     let who = run.call("toy_list", json!({ "whoami": true }), other);

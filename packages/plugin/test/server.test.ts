@@ -26,6 +26,8 @@ import {
   problems,
   sha256Jcs,
   tsx,
+  withAudience,
+  withPress,
 } from "../src";
 
 const APP = "export default function Board() {\n  return null;\n}\n";
@@ -84,6 +86,14 @@ class Toy implements Plugin {
       { name: "toy_list", description: "List.", inputSchema: o, readOnly: true },
       { name: "toy_add", description: "Add.", inputSchema: o, readOnly: false },
       { name: "toy_resolve", description: "Resolve.", inputSchema: o, readOnly: true },
+      withAudience({ name: "toy_peek", description: "Peek.", inputSchema: o, readOnly: true }, ["agent", "widget"]),
+      withPress({ name: "toy_post", description: "Post.", inputSchema: o, readOnly: false }, "post", "toy_peek"),
+      { name: "toy_raw", description: "Raw.", inputSchema: o, readOnly: false, _meta: { "buwiz/audience": ["agent"], "vendor/x": 1 } },
+      withPress({ name: "toy_press_empty", description: "A.", inputSchema: o, readOnly: false }, "post", ""),
+      withPress({ name: "toy_press_write", description: "B.", inputSchema: o, readOnly: false }, "post", "toy_add"),
+      withPress({ name: "toy_press_none", description: "C.", inputSchema: o, readOnly: false }, "close", "toy_gone"),
+      withAudience({ name: "toy_pin", description: "Pin.", inputSchema: o, readOnly: false }, ["widget"]),
+      withAudience({ name: "toy_look", description: "Look.", inputSchema: o, readOnly: true }, ["agent"]),
     ];
   }
 
@@ -141,15 +151,20 @@ class Run {
     return this.call("buwiz.provision", { protocol: "1.0.1", plugin: this.toy.id, key: { alg: "ed25519", seed: b64u(SEED) }, pub: key.public() });
   }
 
-  open(app: string, byte: number) {
+  /** buwiz.session.open as `caller` makes it; the host names no caller. */
+  open(app: string, byte: number, caller: unknown = null) {
     const entry = this.toy.manifest(this.toy.releaseKeyId).apps?.find((a) => a.id === app) ?? {};
-    return this.call("buwiz.session.open", {
-      app,
-      open_id: b64u(new Uint8Array(16).fill(byte)),
-      ks_pub: b64u(new Uint8Array(32).fill(2)),
-      perms_sha256: permissionsDigest(entry),
-      not_after: Date.now() + 3_600_000,
-    });
+    return this.call(
+      "buwiz.session.open",
+      {
+        app,
+        open_id: b64u(new Uint8Array(16).fill(byte)),
+        ks_pub: b64u(new Uint8Array(32).fill(2)),
+        perms_sha256: permissionsDigest(entry),
+        not_after: Date.now() + 3_600_000,
+      },
+      caller,
+    );
   }
 }
 
@@ -197,6 +212,33 @@ test("a session certificate is the request signed with the provisioned key", asy
     not_after: Date.now() + 1000,
   });
   expect(wrong.result.isError).toBe(true);
+});
+
+test("a reserved tool is the host's own, and a call that names a caller is refused", async () => {
+  const run = new Run();
+  await run.provision();
+  await run.open("fast", 4);
+  const callers = [
+    { origin: "agent" },
+    appCaller("fast", 4),
+    { origin: "routine", routine: "tidy" },
+    { origin: "resolve" },
+    { origin: "widget", widget: "R37" },
+    { origin: "somebody" },
+    { origin: "" },
+    {},
+  ];
+  for (const caller of callers) {
+    // no caller opens a session for itself: the open it asked for is not there
+    expect(result(await run.open("fast", 7, caller)).code).toBe("permission_denied");
+    expect(result(await run.call("toy_add", {}, appCaller("fast", 7))).code).toBe("permission_denied");
+    // and none closes one, uninstalls, pushes an account or resolves a ticket:
+    // every reserved name is refused, and the host's open still works
+    for (const name of RESERVED) {
+      expect(result(await run.call(name, { open_id: b64u(new Uint8Array(16).fill(4)) }, caller)).code).toBe("permission_denied");
+    }
+    expect(result(await run.call("toy_add", {}, appCaller("fast", 4))).added).toBe(true);
+  }
 });
 
 test("an app reaches only the tools its certified open grants", async () => {
@@ -344,8 +386,33 @@ test("lists tools and serves the manifest and TSX sources only", async () => {
   const init = await run.rpc("initialize", { protocolVersion: "2025-11-25" });
   expect(init.result.serverInfo.name).toBe("toy-mini-app");
   expect(init.result.instructions).toBe("Toy keeps a list.");
-  const names = (await run.rpc("tools/list", {})).result.tools.map((t: Tool) => t.name);
-  expect(names).toEqual([...RESERVED, "toy_list", "toy_add", "toy_resolve"]);
+  const listed = (await run.rpc("tools/list", {})).result.tools;
+  const names = listed.map((t: Tool) => t.name);
+  expect(names).toEqual([
+    ...RESERVED,
+    "toy_list",
+    "toy_add",
+    "toy_resolve",
+    "toy_peek",
+    "toy_post",
+    "toy_raw",
+    "toy_press_empty",
+    "toy_press_write",
+    "toy_press_none",
+    "toy_pin",
+    "toy_look",
+  ]);
+  // a tool's _meta is shown as declared, and the key is absent without one
+  const by = (name: string) => listed.find((t: Tool) => t.name === name);
+  expect("_meta" in by("toy_list")).toBe(false);
+  expect(by("toy_list").annotations.readOnlyHint).toBe(true);
+  expect(by("toy_peek")._meta).toEqual({ "buwiz/audience": ["agent", "widget"] });
+  expect(by("toy_peek").annotations.readOnlyHint).toBe(true);
+  expect(by("toy_post")._meta).toEqual({ "buwiz/press": { approved: true, effect: "post", describe: "toy_peek" } });
+  expect(by("toy_post").annotations.readOnlyHint).toBe(false);
+  expect(by("toy_raw")._meta).toEqual({ "buwiz/audience": ["agent"], "vendor/x": 1 });
+  // a press opt-in whose describe is empty, a write or no tool is left out
+  for (const name of ["toy_press_empty", "toy_press_write", "toy_press_none"]) expect("_meta" in by(name)).toBe(false);
   expect(RESERVED.length).toBe(7);
   const uris = (await run.rpc("resources/list", {})).result.resources.map((r: { uri: string }) => r.uri);
   expect(uris).toEqual(["buwiz://manifest", "buwiz-app://board"]);
@@ -439,11 +506,25 @@ test("a widget call carries its origin and name, and an unknown origin is unknow
   const run = new Run();
   await run.provision();
   const widget = { origin: "widget", plugin: "app.buwiz.toy", widget: "R37", ts: 1 };
-  const who = result(await run.call("toy_list", { whoami: true }, widget));
+  const who = result(await run.call("toy_peek", { whoami: true }, widget));
   expect(who.origin).toBe("widget");
   expect(who.widget).toBe("R37");
-  // a widget the person allowed to write reaches a write tool
-  expect(result(await run.call("toy_add", {}, widget)).added).toBe(true);
+  // a widget the person allowed to write reaches a write offered to widgets
+  expect(result(await run.call("toy_pin", {}, widget)).text).toBe("milk");
+  // a tool that is not offered to widgets is refused, read or write,
+  // whatever else its audience names
+  for (const tool of ["toy_list", "toy_add", "toy_raw", "toy_post", "toy_look"]) {
+    expect(result(await run.call(tool, {}, widget)).code).toBe("permission_denied");
+  }
+  // a widget's call names no app, open or press: one that does is refused,
+  // even for a tool offered to widgets and an open this process certified
+  await run.open("fast", 4);
+  const throughApp = { ...appCaller("fast", 4), origin: "widget" };
+  const pressed = { ...widget, press: { by: "ai", who: "agent.example" } };
+  for (const caller of [throughApp, pressed]) {
+    expect(result(await run.call("toy_pin", {}, caller)).code).toBe("permission_denied");
+  }
+  expect(run.toy.calls).toEqual(["toy_peek", "toy_pin"]);
   // an origin this library does not know is not a crash
   const other = result(await run.call("toy_list", { whoami: true }, { origin: "somebody", plugin: "app.buwiz.toy", ts: 1 }));
   expect(other.origin).toBe("unknown");

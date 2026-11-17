@@ -27,6 +27,7 @@ export {
   PARSE_ERROR,
   type Plugin,
   type Press,
+  type PressEffect,
   RESERVED,
   type Result,
   Server,
@@ -35,6 +36,8 @@ export {
   fail,
   ok,
   serveStdio,
+  withAudience,
+  withPress,
 } from "./server";
 export { Harness, ToolError } from "./testing";
 export { Tickets, isTicket, newTicket } from "./tickets";
