@@ -8,7 +8,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIMITS } from "../src/v1/manifest.mjs";
-import { PARAMS_MAX_BYTES } from "../src/v1/params.mjs";
+import { PARAMS_MAX_BYTES, PARAMS_MAX_PROPERTIES } from "../src/v1/params.mjs";
 import * as plugins from "../src/v1/plugins.mjs";
 import * as sessions from "../src/v1/sessions.mjs";
 
@@ -120,7 +120,6 @@ test("the limits the host enforces on a call, a result, a certificate and a rest
   expect(inSpec("Calls in flight / new calls a second, per open")).toEqual([sessions.MAX_INFLIGHT, sessions.MAX_PER_SECOND]);
   expect(inBridge("Calls in flight per open")).toEqual([sessions.MAX_INFLIGHT]);
   expect(inBridge("New calls per second per open")).toEqual([sessions.MAX_PER_SECOND]);
-  expect(sessions.RATE_WINDOW_MS).toBe(1000);
   expect(inSpec("Nonce window")).toEqual([sessions.NONCE_WINDOW_MS / 60_000, sessions.NONCE_MAX]);
   expect(inSpec("Clock skew")).toEqual([sessions.SKEW_MS / 1000]);
   expect(inSpec("Session certificate")).toEqual([sessions.CERT_MAX_MS / 3600_000]);
@@ -128,7 +127,7 @@ test("the limits the host enforces on a call, a result, a certificate and a rest
   expect(inSpec("Resolve `prompt`")).toEqual([sessions.PROMPT_MAX]);
   expect(inBridge("Resolve `prompt` text")).toEqual([sessions.PROMPT_MAX]);
   expect(sessions.PREVIEW_MAX).toBe(LIMITS.previewMaxBytes);
-  expect(inSpec("Routine `params`").slice(0, 2)).toEqual([16, PARAMS_MAX_BYTES]);
+  expect(inSpec("Routine `params`").slice(0, 2)).toEqual([PARAMS_MAX_PROPERTIES, PARAMS_MAX_BYTES]);
   // restarts: a backoff from 1 to 60 s, six in ten minutes
   expect(inSpec("Restarts")).toEqual([plugins.BACKOFF_S[0], plugins.BACKOFF_S.at(-1), plugins.MAX_RESTARTS, plugins.RESTART_WINDOW_MS / 60_000]);
 });

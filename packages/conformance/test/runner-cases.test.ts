@@ -7,12 +7,17 @@ import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { verifyManifest } from "../src/v1/manifest.mjs";
+import { loadTrust } from "../src/v1/trust.mjs";
 import { type Row, RUNNER, SIGNER, TEMPLATE, FIXTURES, fixture, idsOf, keygen, node, runJson, removeTempDirs, tempDir } from "./support";
 
 afterAll(removeTempDirs);
 
 const MINUTE = 60_000;
 const signed = async (args: string[]) => runJson([...args, "--sign-with", (await keygen(tempDir())).path]);
+// the scoped plugin run once with no misbehaviour; the tests that read it share that one run
+let goodScoped: ReturnType<typeof signed> | undefined;
+const scopedGood = () => (goodScoped ??= signed(scoped()));
 const reserved = (mode?: string) => fixture("reserved-plugin.mjs", mode ? { RESERVED_MODE: mode } : {});
 const scoped = (mode?: string) => fixture("scoped-plugin.mjs", mode ? { SCOPED_MODE: mode } : {});
 
@@ -115,7 +120,7 @@ const chosen = (rows: Row[]) => rows.filter((r) => r.id === "INV-04" && /a chose
 test(
   "INV-04 resolves a chosen completion of an attachable scope, a ticket its own completion offered",
   async () => {
-    const { code, rows } = await signed(scoped());
+    const { code, rows } = await scopedGood();
     expect(rows.filter((r) => r.status === "fail")).toEqual([]);
     expect(code).toBe(0);
     expect(chosen(rows).map((r) => r.status)).toEqual(["pass"]);
@@ -141,7 +146,7 @@ test(
 test(
   "INV-10 passes a bare command's prompt and fails one over 4000 characters, with the other rows passing",
   async () => {
-    const good = await signed(scoped());
+    const good = await scopedGood();
     expect(good.rows.filter((r) => r.id === "INV-10").map((r) => [r.status, r.note])).toEqual([["pass", "22 characters"]]);
 
     const { code, rows } = await signed(scoped("long-prompt"));
@@ -255,9 +260,33 @@ test("the command-line tools start when run through a symlinked folder, as anyth
   expect(signer.code).toBe(1);
   expect(signer.err).toContain("usage: buwiz-sign-manifest");
 
-  // and does its work: a key written through the link
+  // and does its work: a key written through the link, then a manifest signed through it
   const dir = tempDir();
-  const keygenDone = await node(join(link, "bin/buwiz-plugin-test.mjs"), ["--keygen", join(dir, "k.key")]);
+  const keyFile = join(dir, "k.key");
+  const keygenDone = await node(join(link, "bin/buwiz-plugin-test.mjs"), ["--keygen", keyFile]);
   expect(keygenDone.code).toBe(0);
-  expect(keygenDone.out).toMatch(/Public key: \S+/);
+  const pub = /Public key: (\S+)/.exec(keygenDone.out)?.[1];
+  expect(pub).toBeTruthy();
+  const out = join(dir, "signed.json");
+  const sign = await node(join(link, "src/v1/sign-manifest.mjs"), [
+    join(FIXTURES, "scoped-manifest.json"),
+    "--key-file",
+    keyFile,
+    "--app",
+    `board=${join(FIXTURES, "board.tsx")}`,
+    "--out",
+    out,
+  ]);
+  expect(sign.code).toBe(0);
+  // the signature verifies under the key's public half, and not after a changed byte
+  const trustFile = join(dir, "trust.json");
+  const trust = {
+    v: 1,
+    publishers: { "example-key-01": { publisher: "com.example", alg: "ed25519", public_key: pub } },
+    approved_plugins: [{ id: "com.example.scoped", publisher_key_id: "example-key-01" }],
+  };
+  writeFileSync(trustFile, JSON.stringify(trust));
+  const text = readFileSync(out, "utf8");
+  expect(verifyManifest(text, loadTrust(trustFile)).manifest.id).toBe("com.example.scoped");
+  expect(() => verifyManifest(text.replace('"Scoped"', '"Scopef"'), loadTrust(trustFile))).toThrow();
 });

@@ -77,14 +77,17 @@ export const fixture = (file: string, env: Record<string, string> = {}): string[
   ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
 ];
 
-/** Run the runner with `--json`: its exit code and rows (the whole result under `res`). */
+/** Run the runner with `--json`: its exit code and rows (the whole result under `res`). It throws, with the exit code and stderr, when stdout is not the JSON result; a test of a usage error calls `node(RUNNER, ...)`. */
 export async function runJson(args: string[], env: Record<string, string> = {}) {
   const done = await node(RUNNER, [...args, "--json"], env);
-  let res: { ok: boolean; plugin: { id: string }; trust: unknown; rows: Row[] } | null = null;
+  let res: { ok: boolean; plugin: { id: string }; trust: unknown; rows: Row[] };
   try {
     res = JSON.parse(done.out);
-  } catch {}
-  return { ...done, res, rows: res?.rows ?? [] };
+  } catch {
+    throw new Error(`the runner printed no JSON result (exit ${done.code}); stderr: ${done.err.slice(0, 500)}; stdout: ${done.out.slice(0, 200)}`);
+  }
+  if (!Array.isArray(res?.rows)) throw new Error(`the runner's JSON has no rows (exit ${done.code}); stderr: ${done.err.slice(0, 500)}`);
+  return { ...done, res, rows: res.rows };
 }
 
 /** The ids of the rows with this status, without repeats. */

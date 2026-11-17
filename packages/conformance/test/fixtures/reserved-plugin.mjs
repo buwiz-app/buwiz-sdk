@@ -1,5 +1,5 @@
 // A plugin that answers the reserved tools itself, without the helper, so it can break them one
-// at a time, for runner.test.ts. RESERVED_MODE says how:
+// at a time, for runner-cases.test.ts. RESERVED_MODE says how:
 //
 //   (none)          answers them as the protocol says
 //   strict-host     buwiz.provision refuses a protocol other than 1.0.0

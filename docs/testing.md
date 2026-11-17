@@ -151,22 +151,28 @@ key use `buwiz-plugin-test --keygen`.
 ## In the SDK's suites
 
 `packages/conformance/test/` runs the runner on a minimal plugin built with
-`@buwiz/sdk/plugin`, which it passes, and on copies that each break one rule,
-which it fails by check ID and leaves every other row passing:
+`@buwiz/sdk/plugin`, which it passes. Two controls pass on purpose, so a
+runner that fails everything cannot pass the suite: a plugin that refuses any
+protocol but 1.0.0 (the runner provisions with the host's protocol), and a
+plugin that offers its attachable scope a ticket (INV-04 resolves it).
+
+It also runs copies of a plugin that each break one rule, and the runner fails
+each by check ID and leaves every other row passing:
 
 - a plugin that answers before `buwiz.provision` (RSV-01), signs a session
   certificate with another key (RSV-03, BRG-03) or writes its key to stderr
   (RSV-03, LCY-01);
-- a plugin that refuses any protocol but 1.0.0, which passes, because the
-  runner provisions with the host's protocol;
 - an app that calls `fetch` (APP-04) or imports outside `nsh`, `nsh/base`
   and `buwiz` (APP-03);
 - a blank prompt, a prompt over 4000 characters and a scope that answers a
   prompt (INV-10), and an attachable scope that offers no ticket (INV-04
   skipped);
-- a manifest of another protocol (MAN-04), a native-only plugin under
-  `--first-party` and without it, and `--first-party` with `BUWIZ_TRUST_FILE`;
-- a trust file that approves a plugin, and one that does not.
+- a manifest of another protocol (MAN-04), a native-only plugin without
+  `--first-party`, and `--first-party` with `BUWIZ_TRUST_FILE`;
+- a trust file that does not approve the plugin.
+
+A native-only plugin under `--first-party` and a trust file that approves the
+plugin pass.
 
 It also checks that the limits tables of [manifest.md](manifest.md),
 [bridge.md](bridge.md) and section 24 of the specification state the numbers

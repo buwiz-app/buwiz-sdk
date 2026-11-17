@@ -1,4 +1,4 @@
-// A plugin on the helper whose resolve tool answers as SCOPED_MODE says, for runner.test.ts. Each
+// A plugin on the helper whose resolve tool answers as SCOPED_MODE says, for runner-cases.test.ts. Each
 // mode breaks one thing and leaves the rest as a plugin would have it:
 //
 //   (none)         a bare /draft answers a prompt, the scope offers a ticket and resolves it
