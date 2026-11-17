@@ -250,6 +250,44 @@ if (args.kind === "command" && !args.value) return ok({ result: "prompt", text: 
 An attachable scope must answer `token` for a value it offered as a choice:
 `buwiz.attach` and the composer rely on it (spec 13.5, 15.1).
 
+## Declaring who may use a tool
+
+A tool says who may use it in its `tools/list` entry (spec 16.4, 16.5): `_meta["buwiz/audience"]`
+is an array of words (`"agent"`, `"widget"`), and `_meta["buwiz/press"]` opts a write in to the
+AI's press. Both libraries build the entry from the tool; `_meta` is shown as given, and the key
+is left out when the tool has none.
+
+```rust
+use buwiz_plugin::{PressEffect, Tool};
+
+// `peek` is a read tool of the plugin; `notes_post` is a write the AI may press once allowed
+let peek = Tool { name: "notes_peek", description: "Peek.", input_schema, read_only: true, meta: None }
+    .with_audience(&["agent", "widget"]);
+let post = Tool { name: "notes_post", description: "Post.", input_schema, read_only: false, ..Tool::default() }
+    .with_press(PressEffect::Post, "notes_peek");
+```
+
+```ts
+import { withAudience, withPress } from "@buwiz/sdk/plugin";
+
+const peek = withAudience({ name: "notes_peek", description: "Peek.", inputSchema, readOnly: true }, ["agent", "widget"]);
+const post = withPress({ name: "notes_post", description: "Post.", inputSchema, readOnly: false }, "post", "notes_peek");
+```
+
+`with_press` and `withPress` always write `approved: true`; the audience is always an array. Any
+other `_meta` key goes in the tool's `meta` field in Rust and its `_meta` field in TypeScript. A
+plugin on the Node template passes `_meta` on the tool object itself.
+
+Naming `"agent"` on a tool that is not read-only does more than list it for the model: by
+section 16.5 of the guide the AI's press on an app's screen may then run that write with no Allow
+card. When the person should be asked each time, leave `"agent"` out and opt in with the press.
+
+A plugin must not opt in a tool that files, submits, sends, pays, voids or reopens, whatever it is
+called (P5, spec 16.5); the host's name rule is only a backstop. Both libraries fail closed on
+the opt-in: `tools/list` leaves out a `buwiz/press` whose `describe` is empty or does not name a
+read-only tool of the same list, lists the tool without it, and writes one line to stderr naming
+the tool and the reason. A hand-written `_meta` gets the same check.
+
 ## Reserved tools (Buwiz Bot to your plugin)
 
 `lib/buwiz-plugin.mjs` implements these; you only need them if you write your

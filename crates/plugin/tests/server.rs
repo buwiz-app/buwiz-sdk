@@ -5,7 +5,8 @@
 use buwiz_plugin::key::PluginKey;
 use buwiz_plugin::manifest::{self, Served};
 use buwiz_plugin::{
-    Args, Caller, Plugin, Press, Server, Tickets, Tool, account_required, b64, fail, jcs, ok,
+    Args, Caller, Plugin, Press, PressEffect, Server, Tickets, Tool, account_required, b64, fail,
+    jcs, ok,
 };
 use serde_json::{Value, json};
 
@@ -60,19 +61,71 @@ impl Plugin for Toy {
                 description: "List.",
                 input_schema: object.clone(),
                 read_only: true,
+                meta: None,
             },
             Tool {
                 name: "toy_add",
                 description: "Add.",
                 input_schema: object.clone(),
                 read_only: false,
+                meta: None,
             },
             Tool {
                 name: "toy_resolve",
                 description: "Resolve.",
-                input_schema: object,
+                input_schema: object.clone(),
                 read_only: true,
+                meta: None,
             },
+            Tool {
+                name: "toy_peek",
+                description: "Peek.",
+                input_schema: object.clone(),
+                read_only: true,
+                meta: None,
+            }
+            .with_audience(&["agent", "widget"]),
+            Tool {
+                name: "toy_post",
+                description: "Post.",
+                input_schema: object.clone(),
+                read_only: false,
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Post, "toy_peek"),
+            Tool {
+                name: "toy_raw",
+                description: "Raw.",
+                input_schema: object.clone(),
+                read_only: false,
+                meta: Some(
+                    json!({ "buwiz/audience": ["agent"], "vendor/x": 1 })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            },
+            Tool {
+                name: "toy_press_empty",
+                description: "A.",
+                input_schema: object.clone(),
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Post, ""),
+            Tool {
+                name: "toy_press_write",
+                description: "B.",
+                input_schema: object.clone(),
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Post, "toy_add"),
+            Tool {
+                name: "toy_press_none",
+                description: "C.",
+                input_schema: object,
+                ..Tool::default()
+            }
+            .with_press(PressEffect::Close, "toy_gone"),
         ]
     }
 
@@ -523,7 +576,51 @@ fn lists_tools_and_serves_the_manifest_and_tsx_sources_only() {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
     assert_eq!(&names[..7], buwiz_plugin::RESERVED);
-    assert_eq!(&names[7..], ["toy_list", "toy_add", "toy_resolve"]);
+    assert_eq!(
+        &names[7..],
+        [
+            "toy_list",
+            "toy_add",
+            "toy_resolve",
+            "toy_peek",
+            "toy_post",
+            "toy_raw",
+            "toy_press_empty",
+            "toy_press_write",
+            "toy_press_none"
+        ]
+    );
+
+    // a tool's _meta is shown as declared, and the key is absent without one
+    let by = |name: &str| {
+        tools["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert!(by("toy_list").get("_meta").is_none());
+    assert_eq!(by("toy_list")["annotations"]["readOnlyHint"], true);
+    assert_eq!(
+        by("toy_peek")["_meta"],
+        json!({ "buwiz/audience": ["agent", "widget"] })
+    );
+    assert_eq!(by("toy_peek")["annotations"]["readOnlyHint"], true);
+    assert_eq!(
+        by("toy_post")["_meta"],
+        json!({ "buwiz/press": { "approved": true, "effect": "post", "describe": "toy_peek" } })
+    );
+    assert_eq!(by("toy_post")["annotations"]["readOnlyHint"], false);
+    assert_eq!(
+        by("toy_raw")["_meta"],
+        json!({ "buwiz/audience": ["agent"], "vendor/x": 1 })
+    );
+    // a press opt-in whose describe is empty, a write or no tool is left out
+    for name in ["toy_press_empty", "toy_press_write", "toy_press_none"] {
+        assert!(by(name).get("_meta").is_none(), "{name}");
+    }
 
     let resources = run.rpc("resources/list", json!({}));
     let uris: Vec<&str> = resources["result"]["resources"]
