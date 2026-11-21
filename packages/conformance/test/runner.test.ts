@@ -80,6 +80,43 @@ test(
 );
 
 test(
+  "permissions.models is a strict empty object",
+  async () => {
+    const dir = tempDir();
+    const key = await keygen(dir);
+    const keyId = "probe-test-01";
+    const manifest = JSON.parse(await probeSays(["manifest", "--key-id", keyId]));
+    const source = join(dir, "board.tsx");
+    writeFileSync(source, await probeSays(["app-source", "board"]));
+
+    const run = async (models?: object) => {
+      const candidate = structuredClone(manifest);
+      if (models === undefined) delete candidate.apps[0].permissions.models;
+      else candidate.apps[0].permissions.models = models;
+      const input = join(dir, "manifest.json");
+      const signed = join(dir, "signed.json");
+      writeFileSync(input, JSON.stringify(candidate));
+      const sign = await node(SIGNER, [input, "--key-file", key.path, "--app", `board=${source}`, "--out", signed]);
+      expect(sign.code).toBe(0);
+      return node(RUNNER, [...probe("--manifest", signed, "--key-file", key.path), "--json"]);
+    };
+
+    const absent = await run();
+    expect(absent.code).toBe(0);
+    expect((JSON.parse(absent.out) as { rows: Row[] }).rows.some((row) => row.id === "BRG-17" && row.status === "pass")).toBe(true);
+
+    const valid = await run({});
+    expect(valid.code).toBe(0);
+    expect((JSON.parse(valid.out) as { rows: Row[] }).rows.some((row) => row.id === "BRG-17" && row.status === "pass")).toBe(true);
+
+    const invalid = await run({ x: 1 });
+    expect(invalid.code).toBe(1);
+    expect(invalid.out).toContain("models");
+  },
+  MINUTE,
+);
+
+test(
   "a manifest signed by the signer is trusted from --key-file, or from BUWIZ_TRUST_FILE",
   async () => {
     const dir = tempDir();

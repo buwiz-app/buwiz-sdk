@@ -82,6 +82,84 @@ fn bridge(granted: Vec<&'static str>) -> (Arc<FakeHost>, Bridge) {
 }
 
 #[test]
+fn model_methods_are_absent_without_the_permission() {
+    let (host, bridge) = bridge(vec![]);
+    assert!(bridge.models().is_none());
+    assert!(bridge.chat(ChatRequest::default()).is_none());
+    assert!(host.sent.lock().unwrap().is_empty());
+}
+
+#[test]
+fn models_catalog_and_chat_events_match_the_bridge_contract() {
+    let catalog = json!({
+        "default": "anthropic/claude-sonnet-4-5",
+        "models": [{
+            "id": "anthropic/claude-sonnet-4-5",
+            "name": "Claude Sonnet 4.5",
+            "maker": "anthropic",
+            "group": "Default",
+            "subscription": true,
+            "efforts": [{"value": "high", "label": "High"}],
+            "default_effort": "high",
+            "inputs": ["text", "image", "pdf"]
+        }]
+    });
+    let host = Arc::new(FakeHost {
+        granted: vec!["buwiz.models", "buwiz.chat"],
+        answer: Mutex::new(Some(Ok(catalog))),
+        ..Default::default()
+    });
+    let bridge = Bridge::new(host.clone());
+    let result = now(bridge.models().unwrap()).unwrap();
+    assert_eq!(
+        result.default.as_deref(),
+        Some("anthropic/claude-sonnet-4-5")
+    );
+    assert_eq!(result.models[0].maker, "anthropic");
+    assert_eq!(result.models[0].inputs, ["text", "image", "pdf"]);
+
+    *host.answer.lock().unwrap() = Some(Ok(json!({"id": "chat-1"})));
+    let mut chat = bridge
+        .chat(ChatRequest {
+            model: "anthropic/claude-sonnet-4-5".to_owned(),
+            effort: Some("high".to_owned()),
+            messages: vec![ChatMessage {
+                role: "user".to_owned(),
+                text: "Read this".to_owned(),
+                files: vec![ChatFile {
+                    name: "scan.pdf".to_owned(),
+                    mime: "application/pdf".to_owned(),
+                    data: vec![0, 1, 255],
+                }],
+            }],
+        })
+        .unwrap();
+    let calls = host.sent.lock().unwrap();
+    assert_eq!(calls[1].0, "buwiz.chat");
+    assert_eq!(calls[1].1["messages"][0]["files"][0]["data"], "AAH/");
+    drop(calls);
+
+    chat.stop();
+    assert_eq!(
+        host.sent.lock().unwrap().last().unwrap().0,
+        "buwiz.chat.stop"
+    );
+    host.emit("buwiz.chat.delta", json!({"id": "chat-1", "text": "Reply"}));
+    host.emit(
+        "buwiz.chat.done",
+        json!({"id": "chat-1", "text": "Reply", "stop_reason": "stopped"}),
+    );
+    assert_eq!(chat.deltas.try_recv().unwrap(), "Reply");
+    assert_eq!(
+        now(chat.done).unwrap(),
+        ChatResult {
+            text: "Reply".to_owned(),
+            stop_reason: ChatStopReason::Stopped,
+        }
+    );
+}
+
+#[test]
 fn the_params_reach_the_bridge() {
     let (_, b) = bridge(vec![]);
     assert_eq!(b.props(), json!({"page": 2}));

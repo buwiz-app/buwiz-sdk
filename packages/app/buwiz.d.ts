@@ -36,6 +36,9 @@ declare module "buwiz" {
       | "not_supported"
       | "no_chat"
       | "quota_exceeded"
+      | "consent_required"
+      | "busy"
+      | "model_unavailable"
       | "internal"
       | (string & {});
     retryable: boolean;
@@ -64,6 +67,44 @@ declare module "buwiz" {
     size: number;
     type: string;
     read(): Promise<Uint8Array>;
+  }
+
+  export interface ModelCatalog {
+    default: string | null;
+    models: ModelInfo[];
+  }
+
+  export interface ModelInfo {
+    id: string;
+    name: string;
+    maker: "anthropic" | "openai" | "google" | "xai" | "mistral" | "deepseek" | "qwen" | "meta" | "other";
+    group: string;
+    subscription: boolean;
+    efforts: { value: string; label: string }[];
+    default_effort: string | null;
+    inputs: ("text" | "image" | "pdf")[];
+  }
+
+  export interface ChatRequest {
+    model: string;
+    effort?: string;
+    messages: ChatMessage[];
+  }
+
+  export interface ChatMessage {
+    role: "user" | "assistant";
+    text: string;
+    files?: {
+      name: string;
+      type: "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "application/pdf";
+      data: Uint8Array;
+    }[];
+  }
+
+  export interface ChatHandle {
+    onDelta(handler: (text: string) => void): () => void;
+    done: Promise<{ text: string; stop_reason: "end" | "max_tokens" | "stopped" }>;
+    stop(): void;
   }
 
   export interface Buwiz {
@@ -102,6 +143,10 @@ declare module "buwiz" {
     open?(target: { app: string; props?: Record<string, Json>; ticket?: string } | { url: string }): Promise<void>;
     /** permissions.attach: "Attach … to this chat?" */
     attach?(scope: string, value: string): Promise<{ token: string; title: string; attached: boolean }>;
+    /** permissions.models: the host's available model catalog. */
+    models?(): Promise<ModelCatalog>;
+    /** permissions.models: an isolated, streamed chat requiring a fresh person press. */
+    chat?(request: ChatRequest): ChatHandle;
     /** permissions.pick_file: [] on cancel; never a path. */
     pickFile?(options?: { extensions?: string[]; multiple?: boolean }): Promise<PickedFile[]>;
     /** permissions.storage: strings, private to this app. */

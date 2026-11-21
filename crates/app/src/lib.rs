@@ -51,9 +51,13 @@
 mod screen;
 
 use std::{
+    collections::HashMap,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     task::{Context, Poll},
 };
 
@@ -345,6 +349,110 @@ impl Storage {
     }
 }
 
+/// The model-picker catalog returned by `buwiz.models()`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ModelCatalog {
+    pub default: Option<String>,
+    pub models: Vec<ModelInfo>,
+}
+
+/// A model the host can route, without provider connection details.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub maker: String,
+    pub group: String,
+    pub subscription: bool,
+    pub efforts: Vec<ModelEffort>,
+    pub default_effort: Option<String>,
+    pub inputs: Vec<String>,
+}
+
+/// An effort choice exposed by a model.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ModelEffort {
+    pub value: String,
+    pub label: String,
+}
+
+/// A file sent with a user message. `data` stays in memory and is base64
+/// encoded only for the host bridge.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ChatFile {
+    pub name: String,
+    pub mime: String,
+    pub data: Vec<u8>,
+}
+
+/// One message in an isolated model chat.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ChatMessage {
+    pub role: String,
+    pub text: String,
+    pub files: Vec<ChatFile>,
+}
+
+/// A request to the app's selected model.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ChatRequest {
+    pub model: String,
+    pub effort: Option<String>,
+    pub messages: Vec<ChatMessage>,
+}
+
+/// Why the model stream ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatStopReason {
+    End,
+    MaxTokens,
+    Stopped,
+}
+
+impl ChatStopReason {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "end" => Some(Self::End),
+            "max_tokens" => Some(Self::MaxTokens),
+            "stopped" => Some(Self::Stopped),
+            _ => None,
+        }
+    }
+}
+
+/// The completed app-only reply.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatResult {
+    pub text: String,
+    pub stop_reason: ChatStopReason,
+}
+
+/// A streamed app-only chat. Read deltas with `deltas.recv().await` and
+/// await `done` for its complete result.
+pub struct ChatHandle {
+    pub deltas: mpsc::UnboundedReceiver<String>,
+    pub done: Pin<Box<dyn Future<Output = Result<ChatResult, BuwizError>> + Send>>,
+    bridge: Bridge,
+    id: Arc<Mutex<Option<String>>>,
+    stop_requested: Arc<AtomicBool>,
+    active: Arc<AtomicBool>,
+}
+
+impl ChatHandle {
+    /// Ends the stream. Calling this after completion is a no-op.
+    pub fn stop(&self) {
+        if !self.active.load(Ordering::SeqCst) || self.stop_requested.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        if let Some(id) = self.id.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+            self.bridge
+                .inner
+                .host
+                .post("buwiz.chat.stop", json!({"id": id}));
+        }
+    }
+}
+
 /// A native screen's bridge to its open: what the `buwiz` global is to a
 /// TSX app. Cheap to clone (the clones are one bridge); `Send` and `Sync`.
 #[derive(Clone)]
@@ -375,6 +483,81 @@ struct Events {
     viewports: Vec<mpsc::UnboundedSender<Viewport>>,
     actions: Vec<mpsc::UnboundedSender<String>>,
     sessions: Vec<mpsc::UnboundedSender<SessionEvent>>,
+    chats: HashMap<String, ChatListener>,
+    pending_chats: HashMap<String, Vec<ChatEvent>>,
+}
+
+struct ChatListener {
+    deltas: mpsc::UnboundedSender<String>,
+    done: Option<oneshot::Sender<Result<ChatResult, BuwizError>>>,
+    active: Arc<AtomicBool>,
+}
+
+enum ChatEvent {
+    Delta(String),
+    Done(ChatResult),
+    Error(BuwizError),
+}
+
+fn send_chat_event(events: &mut Events, id: String, event: ChatEvent) {
+    match event {
+        ChatEvent::Delta(text) => {
+            if let Some(listener) = events.chats.get(&id) {
+                let _ = listener.deltas.send(text);
+            } else {
+                events
+                    .pending_chats
+                    .entry(id)
+                    .or_default()
+                    .push(ChatEvent::Delta(text));
+            }
+        }
+        ChatEvent::Done(result) => {
+            if let Some(mut listener) = events.chats.remove(&id) {
+                listener.active.store(false, Ordering::SeqCst);
+                if let Some(done) = listener.done.take() {
+                    let _ = done.send(Ok(result));
+                }
+            } else {
+                events
+                    .pending_chats
+                    .entry(id)
+                    .or_default()
+                    .push(ChatEvent::Done(result));
+            }
+        }
+        ChatEvent::Error(error) => {
+            if let Some(mut listener) = events.chats.remove(&id) {
+                listener.active.store(false, Ordering::SeqCst);
+                if let Some(done) = listener.done.take() {
+                    let _ = done.send(Err(error));
+                }
+            } else {
+                events
+                    .pending_chats
+                    .entry(id)
+                    .or_default()
+                    .push(ChatEvent::Error(error));
+            }
+        }
+    }
+}
+
+fn chat_error(value: &Value) -> BuwizError {
+    BuwizError::new(
+        value
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or("internal"),
+        value
+            .get("retryable")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        value
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("the chat failed"),
+    )
 }
 
 /// Sends `v` to every listener in `list`, dropping those whose task ended.
@@ -426,6 +609,49 @@ impl Bridge {
                 {
                     fan_out(&mut e.sessions, &SessionEvent::Reconnecting);
                 }
+                "buwiz.chat.delta" => {
+                    if let Some(id) = data.get("id").and_then(Value::as_str)
+                        && let Some(text) = data.get("text").and_then(Value::as_str)
+                    {
+                        send_chat_event(&mut e, id.to_owned(), ChatEvent::Delta(text.to_owned()));
+                    }
+                }
+                "buwiz.chat.done" => {
+                    if let Some(id) = data.get("id").and_then(Value::as_str) {
+                        let result = data
+                            .get("stop_reason")
+                            .and_then(Value::as_str)
+                            .and_then(ChatStopReason::parse)
+                            .map(|stop_reason| ChatResult {
+                                text: data
+                                    .get("text")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_owned(),
+                                stop_reason,
+                            })
+                            .ok_or_else(|| {
+                                BuwizError::internal("the host sent an invalid chat result")
+                            });
+                        match result {
+                            Ok(result) => {
+                                send_chat_event(&mut e, id.to_owned(), ChatEvent::Done(result))
+                            }
+                            Err(error) => {
+                                send_chat_event(&mut e, id.to_owned(), ChatEvent::Error(error))
+                            }
+                        }
+                    }
+                }
+                "buwiz.chat.error" => {
+                    if let Some(id) = data.get("id").and_then(Value::as_str) {
+                        send_chat_event(
+                            &mut e,
+                            id.to_owned(),
+                            ChatEvent::Error(chat_error(&data["error"])),
+                        );
+                    }
+                }
                 _ => {}
             }
         }));
@@ -444,6 +670,183 @@ impl Bridge {
 
     fn has(&self, method: &str) -> bool {
         self.inner.granted.iter().any(|m| m == method)
+    }
+
+    /// The host's model catalog, when `permissions.models` is granted.
+    pub fn models(
+        &self,
+    ) -> Option<impl Future<Output = Result<ModelCatalog, BuwizError>> + 'static> {
+        if !self.has("buwiz.models") {
+            return None;
+        }
+        let request = self.ask("buwiz.models", Value::Null);
+        Some(async move {
+            let value = request.await?;
+            let Some(models) = value.get("models").and_then(Value::as_array) else {
+                return Err(BuwizError::internal(
+                    "the host sent an invalid model catalog",
+                ));
+            };
+            let models = models
+                .iter()
+                .map(|model| {
+                    let string = |key: &str| {
+                        model
+                            .get(key)
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_owned()
+                    };
+                    ModelInfo {
+                        id: string("id"),
+                        name: string("name"),
+                        maker: string("maker"),
+                        group: string("group"),
+                        subscription: model
+                            .get("subscription")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                        efforts: model
+                            .get("efforts")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                            .map(|effort| ModelEffort {
+                                value: effort
+                                    .get("value")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_owned(),
+                                label: effort
+                                    .get("label")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_owned(),
+                            })
+                            .collect(),
+                        default_effort: model
+                            .get("default_effort")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
+                        inputs: model
+                            .get("inputs")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect(),
+                    }
+                })
+                .collect();
+            Ok(ModelCatalog {
+                default: value
+                    .get("default")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                models,
+            })
+        })
+    }
+
+    /// Starts an isolated model chat when `permissions.models` is granted.
+    pub fn chat(&self, request: ChatRequest) -> Option<ChatHandle> {
+        if !self.has("buwiz.chat") {
+            return None;
+        }
+        let messages: Vec<Value> = request
+            .messages
+            .iter()
+            .map(|message| {
+                let files: Vec<Value> = message
+                    .files
+                    .iter()
+                    .map(|file| {
+                        json!({
+                            "name": file.name,
+                            "type": file.mime,
+                            "data": base64::engine::general_purpose::STANDARD.encode(&file.data),
+                        })
+                    })
+                    .collect();
+                json!({
+                    "role": message.role,
+                    "text": message.text,
+                    "files": files,
+                })
+            })
+            .collect();
+        let mut data = serde_json::Map::new();
+        data.insert("model".to_owned(), json!(request.model));
+        if let Some(effort) = request.effort {
+            data.insert("effort".to_owned(), json!(effort));
+        }
+        data.insert("messages".to_owned(), json!(messages));
+
+        let (delta_tx, deltas) = mpsc::unbounded_channel();
+        let (done_tx, done_rx) = oneshot::channel();
+        let id = Arc::new(Mutex::new(None));
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        let active = Arc::new(AtomicBool::new(true));
+        let callback_id = id.clone();
+        let callback_stop = stop_requested.clone();
+        let callback_active = active.clone();
+        let bridge = self.clone();
+        let events = self.inner.events.clone();
+        self.inner.host.call(
+            "buwiz.chat",
+            Value::Object(data),
+            Box::new(move |result| match result {
+                Err(error) => {
+                    callback_active.store(false, Ordering::SeqCst);
+                    let _ = done_tx.send(Err(error));
+                }
+                Ok(value) => {
+                    let Some(chat_id) = value.get("id").and_then(Value::as_str).map(str::to_owned)
+                    else {
+                        callback_active.store(false, Ordering::SeqCst);
+                        let _ = done_tx.send(Err(BuwizError::internal("the host sent no chat id")));
+                        return;
+                    };
+                    *callback_id.lock().unwrap_or_else(|e| e.into_inner()) = Some(chat_id.clone());
+                    let mut events = events.lock().unwrap_or_else(|e| e.into_inner());
+                    events.chats.insert(
+                        chat_id.clone(),
+                        ChatListener {
+                            deltas: delta_tx,
+                            done: Some(done_tx),
+                            active: callback_active.clone(),
+                        },
+                    );
+                    if let Some(pending) = events.pending_chats.remove(&chat_id) {
+                        for event in pending {
+                            send_chat_event(&mut events, chat_id.clone(), event);
+                        }
+                    }
+                    drop(events);
+                    if callback_stop.load(Ordering::SeqCst)
+                        && callback_active.load(Ordering::SeqCst)
+                    {
+                        bridge
+                            .inner
+                            .host
+                            .post("buwiz.chat.stop", json!({"id": chat_id}));
+                    }
+                }
+            }),
+        );
+        Some(ChatHandle {
+            deltas,
+            done: Box::pin(async move {
+                done_rx.await.unwrap_or_else(|_| {
+                    Err(BuwizError::internal("the host did not finish the chat"))
+                })
+            }),
+            bridge: self.clone(),
+            id,
+            stop_requested,
+            active,
+        })
     }
 
     /// Calls `method` now; the future is its answer.

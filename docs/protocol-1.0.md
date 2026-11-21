@@ -602,7 +602,7 @@ An update is an install of an installed id.
   older version".
 - **Permission diff.** Every permission the new manifest grants that the installed one did not needs the
   person's consent; a removed one does not. The diff compares, per app id: each added tool, open app, external
-  origin and attach scope; `pick_file` newly granted, or a new extension, a larger `max_bytes` or `multiple`
+  origin and attach scope; `models` newly granted; `pick_file` newly granted, or a new extension, a larger `max_bytes` or `multiple`
   newly true; `storage` newly granted or a larger quota; `copy` newly true; `preview` newly granted or a
   larger `max_bytes`; and, per routine id, each added `reads` tool and each added `writes` tool. Without
   consent the update is refused with `consent_declined` (`details.reason: "permissions_added"`, `details.added`:
@@ -784,8 +784,11 @@ present and failing. A host MUST NOT share one app's policy with another.
 | `storage`   | `{quota_bytes?}`                                                | 1 to 10485760 (10 MiB); default 1048576 (1 MiB)                                        | `buwiz.storage`                 |
 | `copy`      | Boolean                                                         |                                                                                        | `buwiz.copy` (when true)        |
 | `preview`   | `{max_bytes?}` or `{}`                                          | 1 to 8388608 (8 MiB); default 8 MiB                                                    | `buwiz.preview`                 |
+| `models`    | `{}`                                                            | No keys                                                                                | `buwiz.models`, `buwiz.chat`    |
 
 An external origin is exactly `https://host[:port]`, with no path or trailing slash.
+
+The install review displays a models grant as "Can ask your AI models."
 
 Always present, with no permission: `buwiz.props`, `buwiz.app`, `buwiz.viewport`, `buwiz.ticket.title`,
 `buwiz.fit`, `buwiz.ready`, `buwiz.actions`, `buwiz.onAction`, `buwiz.meta` and `buwiz.settle`. Each of these
@@ -813,6 +816,8 @@ interface Buwiz {
   call?<T = Json>(tool: string, args?: Record<string, Json>): Promise<T>; // tools
   open?(target: { app: string; props?: Record<string, Json>; ticket?: string } | { url: string }): Promise<void>; // open
   attach?(scope: string, value: string): Promise<{ token: string; title: string; attached: boolean }>; // attach
+  models?(): Promise<ModelCatalog>; // models
+  chat?(request: ChatRequest): ChatHandle; // models
   pickFile?(options?: { extensions?: string[]; multiple?: boolean }): Promise<PickedFile[]>; // pick_file
   storage?: {
     get(key: string): Promise<string | null>;
@@ -834,6 +839,35 @@ interface PickedFile {
   size: number;
   type: string;
   read(): Promise<Uint8Array>;
+}
+interface ModelCatalog {
+  default: string | null;
+  models: ModelInfo[];
+}
+interface ModelInfo {
+  id: string;
+  name: string;
+  maker: "anthropic" | "openai" | "google" | "xai" | "mistral" | "deepseek" | "qwen" | "meta" | "other";
+  group: string;
+  subscription: boolean;
+  efforts: { value: string; label: string }[];
+  default_effort: string | null;
+  inputs: ("text" | "image" | "pdf")[];
+}
+interface ChatRequest {
+  model: string;
+  effort?: string;
+  messages: ChatMessage[];
+}
+interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  files?: { name: string; type: "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "application/pdf"; data: Uint8Array }[];
+}
+interface ChatHandle {
+  onDelta(handler: (text: string) => void): () => void;
+  done: Promise<{ text: string; stop_reason: "end" | "max_tokens" | "stopped" }>;
+  stop(): void;
 }
 ```
 
@@ -914,6 +948,43 @@ reaches the app.
 - A host without a document view rejects `not_supported`.
 
 **`buwiz.storage`**: section 21.
+
+### 13.5.1 `buwiz.models` and `buwiz.chat`
+
+Both methods require `permissions.models: {}`. Without that grant, both are absent from the bridge. The object is
+strict: any key is refused. `buwiz.models()` returns `{default, models}`; model ids are opaque and the catalog
+contains no provider routes, connection details, keys or URLs. `inputs` always contains `text`.
+
+`buwiz.chat(request)` starts an isolated conversation and returns a handle. `onDelta(handler)` subscribes to
+appended text chunks in order and returns an unsubscribe function. `done` resolves to the complete text and
+`stop_reason` (`end`, `max_tokens` or `stopped`). `stop()` ends an active stream; after completion it does nothing.
+
+| Request field | Rule                                                                                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model`       | A model id from the catalog; unknown ids reject `invalid_args`.                                                                                       |
+| `effort`      | Optional; must be one of that model's `efforts[].value`, else `invalid_args`.                                                                         |
+| `messages`    | 1 to 64 messages; the last has role `user`. Each has role `user` or `assistant` and `text`; text may be empty only when files are present.            |
+| `files`       | Optional, only on user messages; at most 8 per message. Image MIME types are PNG, JPEG, WebP and GIF; PDF is `application/pdf`. Data is `Uint8Array`. |
+
+Text per message is at most 256 KiB. One file is at most 20 MiB and the request's JCS size, counting file bytes
+at their byte length, is at most 32 MiB. Exceeding a file or request quota rejects `quota_exceeded`. An image or
+PDF not in the model's `inputs` rejects `not_supported`; an invalid role, order, count, file type or effort rejects
+`invalid_args`.
+
+The model sees only the request messages and this fixed system line:
+`You are answering inside the <app title> app of <plugin name>. Reply in plain text or Markdown.`
+No Bot chat history, memory, skills or tools are included; there is no tool loop. Nothing is written to a Bot
+thread, transcript, log or analytics. The reply goes only to the app.
+
+Each chat requires a fresh person press in this open, spent once per chat call. A call without one, or while the
+AI drives the screen (`origin: agent`), rejects `consent_required`. `buwiz.models()` needs no press. At most one
+chat may be in flight per open (`busy`); at most 30 chats per minute per open (`rate_limited`). A stream idle for
+120 seconds ends with `timeout`. The host chooses the output-token limit, at least 4096. A catalog with no
+reachable model is `{default: null, models: []}`.
+
+Catalog `inputs` uses the gateway model list's input modalities when supplied; otherwise the host fallback is:
+Anthropic, OpenAI GPT-4o/4.1/5 and o-series, and Google Gemini: `text`, `image`, `pdf`; xAI grok-4 and later:
+`text`, `image`; all others: `text`.
 
 ### 13.6 Card chrome: `buwiz.actions`, `buwiz.onAction`, `buwiz.meta`, `buwiz.settle`
 
@@ -1262,6 +1333,7 @@ The host strips `_meta` from every tool result before the model or an app sees i
 | `buwiz.open({url})`, or an `https` URL in a resolve or tool result                               | A dialog every time: "Open <URL> in your browser?"                                                    |
 | Any other scheme in plugin output (`http`, `mailto`, `tel`, `file`, `buwiz://` other than `app`) | Refused; never opened.                                                                                |
 | `buwiz.attach`                                                                                   | A dialog: "Attach <title> to this chat?"                                                              |
+| `buwiz.chat`                                                                                     | The person's own press in the app is the consent; no dialog.                                          |
 | `buwiz.pickFile`                                                                                 | The native file dialog is the consent.                                                                |
 | A generated widget's first use of a source's tools                                               | A card per widget and source with read and write as separate answers; nothing is sent until answered. |
 | The AI's press of a tool that opted in with `buwiz/press`                                        | A card with Not now and Allow for that one call; nothing is sent until the person presses Allow.      |
@@ -1464,6 +1536,8 @@ characters.
 | `not_found`                                             | no        | No such tool, app, plugin or account.                                          |
 | `disabled`                                              | no        | The person switched the tool off.                                              |
 | `consent_declined`                                      | no        | The person said no, or an update adds permissions not approved.                |
+| `consent_required`                                      | no        | A chat has no fresh person press in this open, or is agent-driven.             |
+| `busy`                                                  | yes       | This open already has an in-flight model chat.                                 |
 | `no_chat`                                               | no        | Needs a chat.                                                                  |
 | `quota_exceeded`                                        | no        | Storage quota, a storage value, or a file's size.                              |
 | `rate_limited`                                          | yes       | Too many calls.                                                                |
@@ -1471,6 +1545,7 @@ characters.
 | `tool_error`                                            | no        | The tool answered `isError`.                                                   |
 | `result_too_large`                                      | no        | Over the result limit.                                                         |
 | `plugin_unavailable`                                    | yes       | Not running, or a provider unreachable.                                        |
+| `model_unavailable`                                     | yes       | The catalog is unreachable or the model refused the request.                   |
 | `plugin_restarted`                                      | yes       | The plugin restarted during or since the open.                                 |
 | `session_invalid`, `bad_signature`, `stale`, `replayed` | no        | Signing failures (section 14.2): a host fault or a clock problem.              |
 | `closed`                                                | no        | The open is gone.                                                              |
@@ -1557,67 +1632,74 @@ The plugin's stderr goes to its log (5 MiB, one rotation), never to the person.
 
 ## 24. Limits
 
-| Item                                                | Limit                                                                                     |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Manifest                                            | 256 KiB                                                                                   |
-| `plugin.json`                                       | 1 MiB                                                                                     |
-| Release index, release manifest                     | 1 MiB each                                                                                |
-| Package files / one binary                          | 256 files, 50 MiB together / 200 MiB                                                      |
-| Install path / asset name                           | 256 / 100 characters                                                                      |
-| TSX app source                                      | 512 KiB                                                                                   |
-| Plugin id / short / version                         | 255 / 2 to 16 / 32 characters                                                             |
-| Tool name                                           | 63 characters                                                                             |
-| Title / description                                 | 60 / 300 characters                                                                       |
-| Publisher name                                      | 80 characters                                                                             |
-| Icon URI                                            | 2048 characters                                                                           |
-| Commands / scopes / routines / apps                 | 32 / 16 / 8 / 16                                                                          |
-| Command description / args                          | 200 / 120 characters                                                                      |
-| Scope description / hint                            | 120 / 1500 characters                                                                     |
-| Routine name / description / prompt / `query.field` | 80 / 300 / 4000 / 64 characters                                                           |
-| Routine `every_s`                                   | 60 to 86400 s                                                                             |
-| Routine `reads` / `writes`                          | 4 entries and 8 tools / 8 tools                                                           |
-| Routine `params`                                    | 16 properties, 4096 bytes; webhook 100 items, 10 calls a minute                           |
-| Routine seen ids                                    | 1000 per instance                                                                         |
-| `permissions.tools`                                 | 64                                                                                        |
-| `permissions.open.apps` / `external`                | 16 / 8                                                                                    |
-| `permissions.attach`                                | 16                                                                                        |
-| `permissions.pick_file` extensions / `max_bytes`    | 16 / 50 MiB                                                                               |
-| `permissions.storage.quota_bytes`                   | 10 MiB (default 1 MiB)                                                                    |
-| `permissions.preview.max_bytes`                     | 8 MiB (default 8 MiB)                                                                     |
-| Props                                               | 8 KiB, depth 8, 100 array items                                                           |
-| Props schema                                        | 16 properties per object, `maxLength` 512, depth 8                                        |
-| Inline width / height                               | 240 to 960 / 96 to 800 points                                                             |
-| Inline `min_height` / `max_height`                  | 96 to `height` / `height` to 800; default 120 / 640                                       |
-| Inline reveal hold                                  | 1.5 s; 3 s with `wait_ready`                                                              |
-| `buwiz.fit`                                         | 8 heights a second per open; changes under 2 points ignored                               |
-| `buwiz.actions`                                     | 3; id 64 characters `[A-Za-z0-9_.:-]`; label 24 characters; one primary                   |
-| `buwiz.meta` / `buwiz.settle`                       | 32 / 120 characters, one line                                                             |
-| `buwiz.call` args / result                          | 256 KiB / 1 MiB                                                                           |
-| A widget's call args / result                       | 256 KiB / 1 MiB                                                                           |
-| `buwiz.preview` document / title                    | `max_bytes` (at most 8 MiB) / 120 characters                                              |
-| `buwiz.copy` text                                   | 1 MiB                                                                                     |
-| `buwiz.open` URL                                    | 2048 characters                                                                           |
-| Calls in flight / new calls a second, per open      | 8 / 20                                                                                    |
-| Nonce window                                        | 5 minutes, 10,000 per open                                                                |
-| Clock skew                                          | 60 s                                                                                      |
-| Session certificate                                 | 8 hours                                                                                   |
-| Pre-opened session                                  | 60 s unused                                                                               |
-| Storage key / value / keys                          | 128 characters / 64 KiB / 1000                                                            |
-| Resolve choices                                     | 20; label 80, detail 160, value 512 characters                                            |
-| Resolve open / token title, error message           | 60 / 200 characters                                                                       |
-| Resolve `prompt`                                    | 4000 characters, commands only                                                            |
-| Ticket title                                        | 120 characters                                                                            |
-| `buwiz/suggest`                                     | 3; label 40, prompt 200 characters                                                        |
-| Answer cards per answer                             | 1 main, 2 small; chips after 5 messages                                                   |
-| Error message                                       | 500 characters                                                                            |
-| Link / props in a link                              | 2048 characters / 1024 bytes                                                              |
-| Accounts                                            | 8 per package; label 60 characters; 16 scopes of 512 characters                           |
-| Account refresh                                     | 5 minutes before expiry                                                                   |
-| Timeouts                                            | bridge 30 s, broker 120 s, resolve 10 s, reserved 5 s, load 10 s, JS call 2 s             |
-| App heap / stack                                    | 256 MB / 4 MB                                                                             |
-| Restarts                                            | backoff 1 to 60 s; 6 in 10 minutes, then `failed`                                         |
-| Plugin log                                          | 5 MiB, one rotation                                                                       |
-| Model text                                          | tool description 1024, instructions 4000, scope hint 1500, routine prompt 4000 characters |
+| Item                                                 | Limit                                                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Manifest                                             | 256 KiB                                                                                   |
+| `plugin.json`                                        | 1 MiB                                                                                     |
+| Release index, release manifest                      | 1 MiB each                                                                                |
+| Package files / one binary                           | 256 files, 50 MiB together / 200 MiB                                                      |
+| Install path / asset name                            | 256 / 100 characters                                                                      |
+| TSX app source                                       | 512 KiB                                                                                   |
+| Plugin id / short / version                          | 255 / 2 to 16 / 32 characters                                                             |
+| Tool name                                            | 63 characters                                                                             |
+| Title / description                                  | 60 / 300 characters                                                                       |
+| Publisher name                                       | 80 characters                                                                             |
+| Icon URI                                             | 2048 characters                                                                           |
+| Commands / scopes / routines / apps                  | 32 / 16 / 8 / 16                                                                          |
+| Command description / args                           | 200 / 120 characters                                                                      |
+| Scope description / hint                             | 120 / 1500 characters                                                                     |
+| Routine name / description / prompt / `query.field`  | 80 / 300 / 4000 / 64 characters                                                           |
+| Routine `every_s`                                    | 60 to 86400 s                                                                             |
+| Routine `reads` / `writes`                           | 4 entries and 8 tools / 8 tools                                                           |
+| Routine `params`                                     | 16 properties, 4096 bytes; webhook 100 items, 10 calls a minute                           |
+| Routine seen ids                                     | 1000 per instance                                                                         |
+| `permissions.tools`                                  | 64                                                                                        |
+| `permissions.open.apps` / `external`                 | 16 / 8                                                                                    |
+| `permissions.attach`                                 | 16                                                                                        |
+| `permissions.pick_file` extensions / `max_bytes`     | 16 / 50 MiB                                                                               |
+| `permissions.storage.quota_bytes`                    | 10 MiB (default 1 MiB)                                                                    |
+| `permissions.preview.max_bytes`                      | 8 MiB (default 8 MiB)                                                                     |
+| `permissions.models`                                 | `{}` only                                                                                 |
+| Chat messages per request                            | 1 to 64                                                                                   |
+| Chat text per message                                | 256 KiB                                                                                   |
+| Chat files per message / one file                    | 8 / 20 MiB                                                                                |
+| Chat request JCS size (file bytes counted by length) | 32 MiB                                                                                    |
+| Chats in flight / per minute per open                | 1 / 30                                                                                    |
+| Chat stream idle timeout / max output tokens         | 120 s / at least 4096                                                                     |
+| Props                                                | 8 KiB, depth 8, 100 array items                                                           |
+| Props schema                                         | 16 properties per object, `maxLength` 512, depth 8                                        |
+| Inline width / height                                | 240 to 960 / 96 to 800 points                                                             |
+| Inline `min_height` / `max_height`                   | 96 to `height` / `height` to 800; default 120 / 640                                       |
+| Inline reveal hold                                   | 1.5 s; 3 s with `wait_ready`                                                              |
+| `buwiz.fit`                                          | 8 heights a second per open; changes under 2 points ignored                               |
+| `buwiz.actions`                                      | 3; id 64 characters `[A-Za-z0-9_.:-]`; label 24 characters; one primary                   |
+| `buwiz.meta` / `buwiz.settle`                        | 32 / 120 characters, one line                                                             |
+| `buwiz.call` args / result                           | 256 KiB / 1 MiB                                                                           |
+| A widget's call args / result                        | 256 KiB / 1 MiB                                                                           |
+| `buwiz.preview` document / title                     | `max_bytes` (at most 8 MiB) / 120 characters                                              |
+| `buwiz.copy` text                                    | 1 MiB                                                                                     |
+| `buwiz.open` URL                                     | 2048 characters                                                                           |
+| Calls in flight / new calls a second, per open       | 8 / 20                                                                                    |
+| Nonce window                                         | 5 minutes, 10,000 per open                                                                |
+| Clock skew                                           | 60 s                                                                                      |
+| Session certificate                                  | 8 hours                                                                                   |
+| Pre-opened session                                   | 60 s unused                                                                               |
+| Storage key / value / keys                           | 128 characters / 64 KiB / 1000                                                            |
+| Resolve choices                                      | 20; label 80, detail 160, value 512 characters                                            |
+| Resolve open / token title, error message            | 60 / 200 characters                                                                       |
+| Resolve `prompt`                                     | 4000 characters, commands only                                                            |
+| Ticket title                                         | 120 characters                                                                            |
+| `buwiz/suggest`                                      | 3; label 40, prompt 200 characters                                                        |
+| Answer cards per answer                              | 1 main, 2 small; chips after 5 messages                                                   |
+| Error message                                        | 500 characters                                                                            |
+| Link / props in a link                               | 2048 characters / 1024 bytes                                                              |
+| Accounts                                             | 8 per package; label 60 characters; 16 scopes of 512 characters                           |
+| Account refresh                                      | 5 minutes before expiry                                                                   |
+| Timeouts                                             | bridge 30 s, broker 120 s, resolve 10 s, reserved 5 s, load 10 s, JS call 2 s             |
+| App heap / stack                                     | 256 MB / 4 MB                                                                             |
+| Restarts                                             | backoff 1 to 60 s; 6 in 10 minutes, then `failed`                                         |
+| Plugin log                                           | 5 MiB, one rotation                                                                       |
+| Model text                                           | tool description 1024, instructions 4000, scope hint 1500, routine prompt 4000 characters |
 
 ---
 
@@ -1789,25 +1871,27 @@ numbering is an ID not in use, and an ID is never reused for another requirement
 
 ### C.3 Bridge and signing (BRG)
 
-| ID     | Side | Requirement                                                                                                                                    | Section          |
-| ------ | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| BRG-01 | host | A call of a tool outside `permissions.tools` rejects `permission_denied` and sends nothing.                                                    | 13.2, 14.2       |
-| BRG-02 | host | A call of a tool the person switched off rejects `disabled`.                                                                                   | 14.2, 14.5       |
-| BRG-03 | both | A call signed by the open's session key with a fresh nonce reaches the plugin with `buwiz/caller` origin `app` and is answered.                | 14.1, 14.2, 16.1 |
-| BRG-04 | host | The same envelope sent twice: the second rejects `replayed`.                                                                                   | 14.2, 14.3       |
-| BRG-05 | host | An envelope 61 s old or ahead rejects `stale`; 59 s passes.                                                                                    | 14.2             |
-| BRG-06 | host | An envelope signed by another key, or changed after signing, rejects `bad_signature`.                                                          | 14.2             |
-| BRG-07 | host | A call without a registered session rejects `session_invalid`.                                                                                 | 14.2             |
-| BRG-08 | host | A call on an open from an earlier plugin generation rejects `plugin_restarted`.                                                                | 14.2             |
-| BRG-09 | host | An `isError: true` result rejects `tool_error` with the first text.                                                                            | 13.2             |
-| BRG-10 | host | A result over 1 MiB rejects `result_too_large`; one just under passes.                                                                         | 13.2             |
-| BRG-11 | host | A call past its time limit rejects `timeout` and the broker sends MCP cancellation.                                                            | 13.2, 22.2       |
-| BRG-12 | host | The 9th concurrent call of an open waits; the 21st new call in one second rejects `rate_limited`.                                              | 13.2             |
-| BRG-13 | host | `buwiz.open({url})` opens only `https:` URLs of a listed origin, and asks every time.                                                          | 13.5, 17         |
-| BRG-14 | host | `buwiz.pickFile` never returns a path; `read()` after the open closes rejects `closed`.                                                        | 13.5             |
-| BRG-15 | host | `buwiz.attach` without consent rejects `consent_declined` and leaves the chat unchanged.                                                       | 13.5, 17         |
-| BRG-16 | host | Storage holds its key, value, quota and key-count limits, and one app cannot read another's keys.                                              | 21               |
-| BRG-19 | host | `buwiz.actions`, `onAction`, `meta` and `settle` are present without permissions, hold their rules, and an inline card draws and settles them. | 12, 13.6         |
+| ID     | Side   | Requirement                                                                                                                                                                                                               | Section          |
+| ------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| BRG-01 | host   | A call of a tool outside `permissions.tools` rejects `permission_denied` and sends nothing.                                                                                                                               | 13.2, 14.2       |
+| BRG-02 | host   | A call of a tool the person switched off rejects `disabled`.                                                                                                                                                              | 14.2, 14.5       |
+| BRG-03 | both   | A call signed by the open's session key with a fresh nonce reaches the plugin with `buwiz/caller` origin `app` and is answered.                                                                                           | 14.1, 14.2, 16.1 |
+| BRG-04 | host   | The same envelope sent twice: the second rejects `replayed`.                                                                                                                                                              | 14.2, 14.3       |
+| BRG-05 | host   | An envelope 61 s old or ahead rejects `stale`; 59 s passes.                                                                                                                                                               | 14.2             |
+| BRG-06 | host   | An envelope signed by another key, or changed after signing, rejects `bad_signature`.                                                                                                                                     | 14.2             |
+| BRG-07 | host   | A call without a registered session rejects `session_invalid`.                                                                                                                                                            | 14.2             |
+| BRG-08 | host   | A call on an open from an earlier plugin generation rejects `plugin_restarted`.                                                                                                                                           | 14.2             |
+| BRG-09 | host   | An `isError: true` result rejects `tool_error` with the first text.                                                                                                                                                       | 13.2             |
+| BRG-10 | host   | A result over 1 MiB rejects `result_too_large`; one just under passes.                                                                                                                                                    | 13.2             |
+| BRG-11 | host   | A call past its time limit rejects `timeout` and the broker sends MCP cancellation.                                                                                                                                       | 13.2, 22.2       |
+| BRG-12 | host   | The 9th concurrent call of an open waits; the 21st new call in one second rejects `rate_limited`.                                                                                                                         | 13.2             |
+| BRG-13 | host   | `buwiz.open({url})` opens only `https:` URLs of a listed origin, and asks every time.                                                                                                                                     | 13.5, 17         |
+| BRG-14 | host   | `buwiz.pickFile` never returns a path; `read()` after the open closes rejects `closed`.                                                                                                                                   | 13.5             |
+| BRG-15 | host   | `buwiz.attach` without consent rejects `consent_declined` and leaves the chat unchanged.                                                                                                                                  | 13.5, 17         |
+| BRG-16 | host   | Storage holds its key, value, quota and key-count limits, and one app cannot read another's keys.                                                                                                                         | 21               |
+| BRG-17 | plugin | `permissions.models` accepts only `{}`; any key is refused.                                                                                                                                                               | 12               |
+| BRG-18 | host   | Without the grant `buwiz.models` and `buwiz.chat` are absent; with it the catalog has the specified shape, chat requires a person press, an image to a text-only model is refused, and stop resolves `done` as `stopped`. | 12, 13.5.1, 17   |
+| BRG-19 | host   | `buwiz.actions`, `onAction`, `meta` and `settle` are present without permissions, hold their rules, and an inline card draws and settles them.                                                                            | 12, 13.6         |
 
 ### C.4 Reserved tools (RSV)
 

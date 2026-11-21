@@ -389,6 +389,17 @@ export async function runPluginTest(o) {
     }
 
     if (m) {
+      await run("BRG-17", "permissions.models is a strict empty object when granted", () => {
+        for (const a of m.apps || []) {
+          const permissions = a.permissions || {};
+          if (!Object.hasOwn(permissions, "models")) continue;
+          const models = permissions.models;
+          expect(models !== null && typeof models === "object" && !Array.isArray(models), `${a.id}: models is not an object`);
+          expect(Object.keys(models).length === 0, `${a.id}: models must have no keys`);
+        }
+        return "models is an empty object when granted";
+      });
+
       await run("MAN-02", "a byte changed in the manifest fails verification", () => {
         const changed = text.replace(`"${m.title}"`, `"${m.title.slice(0, -1)}${m.title.endsWith("x") ? "y" : "x"}"`);
 
