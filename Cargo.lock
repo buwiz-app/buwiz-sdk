@@ -391,6 +391,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "cipher"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -851,6 +860,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fba3fe847045ecff794b9c138293a80db914678c453ad63fbf0c6a9eb6e00b22"
 dependencies = [
  "encoding_rs",
+]
+
+[[package]]
+name = "env_filter"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "288efae2d67fb0418d01f837feb55c7a9cdc4c5db38d3dee91324a1c7ec6fd31"
+dependencies = [
+ "log",
 ]
 
 [[package]]
@@ -1602,44 +1620,41 @@ dependencies = [
 
 [[package]]
 name = "nsh-core"
-version = "0.4.0"
-source = "git+https://github.com/hexuria/nsh?rev=c66f78cb4fa67825c51db55909ef5e1ea24f1658#c66f78cb4fa67825c51db55909ef5e1ea24f1658"
+version = "0.6.0"
+source = "git+https://github.com/hexuria/nsh?rev=3fcb4e58b2aeb8750d78803e356408c4b36c0f55#3fcb4e58b2aeb8750d78803e356408c4b36c0f55"
 dependencies = [
  "cap-std",
+ "chrono",
  "crc32fast",
- "futures-util",
  "httpdate",
  "imagesize",
  "libc",
  "log",
  "nsh-macros",
- "nsh-updater",
  "ordered-float",
  "rust-i18n",
  "rustc-hash",
- "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "slab",
  "taffy",
  "tokio",
- "tokio-tungstenite",
  "ttf-parser",
  "unicode-linebreak",
  "unicode-properties",
  "url",
- "webpki-roots 1.0.11",
  "windows-sys 0.61.2",
  "wuff",
 ]
 
 [[package]]
 name = "nsh-engine"
-version = "0.4.0"
-source = "git+https://github.com/hexuria/nsh?rev=c66f78cb4fa67825c51db55909ef5e1ea24f1658#c66f78cb4fa67825c51db55909ef5e1ea24f1658"
+version = "0.6.0"
+source = "git+https://github.com/hexuria/nsh?rev=3fcb4e58b2aeb8750d78803e356408c4b36c0f55#3fcb4e58b2aeb8750d78803e356408c4b36c0f55"
 dependencies = [
  "crossbeam-channel",
+ "env_filter",
  "libc",
  "log",
  "nsh-core",
@@ -1656,13 +1671,13 @@ dependencies = [
 
 [[package]]
 name = "nsh-i18n"
-version = "0.4.0"
-source = "git+https://github.com/hexuria/nsh?rev=c66f78cb4fa67825c51db55909ef5e1ea24f1658#c66f78cb4fa67825c51db55909ef5e1ea24f1658"
+version = "0.6.0"
+source = "git+https://github.com/hexuria/nsh?rev=3fcb4e58b2aeb8750d78803e356408c4b36c0f55#3fcb4e58b2aeb8750d78803e356408c4b36c0f55"
 
 [[package]]
 name = "nsh-js"
-version = "0.4.0"
-source = "git+https://github.com/hexuria/nsh?rev=c66f78cb4fa67825c51db55909ef5e1ea24f1658#c66f78cb4fa67825c51db55909ef5e1ea24f1658"
+version = "0.6.0"
+source = "git+https://github.com/hexuria/nsh?rev=3fcb4e58b2aeb8750d78803e356408c4b36c0f55#3fcb4e58b2aeb8750d78803e356408c4b36c0f55"
 dependencies = [
  "futures-util",
  "getrandom 0.4.3",
@@ -1684,8 +1699,8 @@ dependencies = [
 
 [[package]]
 name = "nsh-macros"
-version = "0.4.0"
-source = "git+https://github.com/hexuria/nsh?rev=c66f78cb4fa67825c51db55909ef5e1ea24f1658#c66f78cb4fa67825c51db55909ef5e1ea24f1658"
+version = "0.6.0"
+source = "git+https://github.com/hexuria/nsh?rev=3fcb4e58b2aeb8750d78803e356408c4b36c0f55#3fcb4e58b2aeb8750d78803e356408c4b36c0f55"
 dependencies = [
  "imagesize",
  "proc-macro2",
@@ -1697,8 +1712,8 @@ dependencies = [
 
 [[package]]
 name = "nsh-package"
-version = "0.4.0"
-source = "git+https://github.com/hexuria/nsh?rev=c66f78cb4fa67825c51db55909ef5e1ea24f1658#c66f78cb4fa67825c51db55909ef5e1ea24f1658"
+version = "0.6.0"
+source = "git+https://github.com/hexuria/nsh?rev=3fcb4e58b2aeb8750d78803e356408c4b36c0f55#3fcb4e58b2aeb8750d78803e356408c4b36c0f55"
 dependencies = [
  "base64",
  "ed25519-dalek 2.2.0",
@@ -1712,8 +1727,8 @@ dependencies = [
 
 [[package]]
 name = "nsh-updater"
-version = "0.4.0"
-source = "git+https://github.com/hexuria/nsh?rev=c66f78cb4fa67825c51db55909ef5e1ea24f1658#c66f78cb4fa67825c51db55909ef5e1ea24f1658"
+version = "0.6.0"
+source = "git+https://github.com/hexuria/nsh?rev=3fcb4e58b2aeb8750d78803e356408c4b36c0f55#3fcb4e58b2aeb8750d78803e356408c4b36c0f55"
 dependencies = [
  "base64",
  "ed25519-dalek 2.2.0",
@@ -2426,7 +2441,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "once_cell",
- "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -3242,7 +3256,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
