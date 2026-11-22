@@ -227,17 +227,20 @@ async function served(spec) {
 function manIdOf(e) {
   const msg = String(e?.message || "");
 
+  // Tags come before any message is read: a message can carry a key's name.
+  if (e?.check === "BRG-17") return "BRG-17";
+
+  if (/\.permissions(\.|$)/.test(e?.unknownKeyAt ?? "")) return "MAN-06";
+
+  if (/^routines\[\d+\]$/.test(e?.unknownKeyAt ?? "")) return "MAN-12";
+
   if (e?.code === "protocol_unsupported" || /^(protocol|version):/.test(msg)) return "MAN-04";
 
   if (e?.code === "not_supported") return "MAN-05";
 
-  if (/must be a JSON object|is not I-JSON/.test(msg)) return "MAN-03";
+  if (/^manifest: (must be a JSON object|is not I-JSON)/.test(msg)) return "MAN-03";
 
   if (/^(signature|publisher|id: .* approved|manifest: cannot)/.test(msg)) return "MAN-01";
-
-  if (/permissions.*not a known key/.test(msg)) return "MAN-06";
-
-  if (/^routines\[\d+\]\.\w+: is not a known key/.test(msg)) return "MAN-12";
 
   if (/built-in command/.test(msg)) return "MAN-11";
 
@@ -388,7 +391,8 @@ export async function runPluginTest(o) {
       m = verifyManifest(text, trust()).manifest;
     } catch (e) {
       failedId = manIdOf(e);
-      rows.push({ id: failedId, what: "the manifest verifies (6.2)", status: "fail", note: errText(e) });
+      const what = failedId === "BRG-17" ? "permissions.models is a strict empty object when granted" : "the manifest verifies (6.2)";
+      rows.push({ id: failedId, what, status: "fail", note: errText(e) });
     }
 
     for (const [id, what] of MAN_ROWS) {
@@ -399,6 +403,17 @@ export async function runPluginTest(o) {
     }
 
     if (m) {
+      await run("BRG-17", "permissions.models is a strict empty object when granted", () => {
+        for (const a of m.apps || []) {
+          const permissions = a.permissions || {};
+          if (!Object.hasOwn(permissions, "models")) continue;
+          const models = permissions.models;
+          expect(models !== null && typeof models === "object" && !Array.isArray(models), `${a.id}: models is not an object`);
+          expect(Object.keys(models).length === 0, `${a.id}: models must have no keys`);
+        }
+        return "models is an empty object when granted";
+      });
+
       await run("MAN-02", "a byte changed in the manifest fails verification", () => {
         const changed = text.replace(`"${m.title}"`, `"${m.title.slice(0, -1)}${m.title.endsWith("x") ? "y" : "x"}"`);
 

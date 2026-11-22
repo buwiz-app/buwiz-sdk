@@ -82,6 +82,70 @@ test(
 );
 
 test(
+  "permissions.models is a strict empty object",
+  async () => {
+    const dir = tempDir();
+    const key = await keygen(dir);
+    const keyId = "probe-test-01";
+    const manifest = JSON.parse(await probeSays(["manifest", "--key-id", keyId]));
+    const source = join(dir, "board.tsx");
+    writeFileSync(source, await probeSays(["app-source", "board"]));
+
+    const run = async (models?: unknown, extra: Record<string, unknown> = {}) => {
+      const candidate = structuredClone(manifest);
+      if (models === undefined) delete candidate.apps[0].permissions.models;
+      else candidate.apps[0].permissions.models = models;
+      Object.assign(candidate.apps[0].permissions, extra);
+      const input = join(dir, "manifest.json");
+      const signed = join(dir, "signed.json");
+      writeFileSync(input, JSON.stringify(candidate));
+      const sign = await node(SIGNER, [input, "--key-file", key.path, "--app", `board=${source}`, "--out", signed]);
+      expect(sign.code).toBe(0);
+      return node(RUNNER, [...probe("--manifest", signed, "--key-file", key.path), "--json"]);
+    };
+
+    const manifestFailures = (out: string) =>
+      (JSON.parse(out) as { rows: Row[] }).rows.filter((row) => row.status === "fail" && /^(MAN-|BRG-17$)/.test(row.id)).map((row) => row.id);
+
+    const absent = await run();
+    expect(absent.code).toBe(0);
+    expect((JSON.parse(absent.out) as { rows: Row[] }).rows.some((row) => row.id === "BRG-17" && row.status === "pass")).toBe(true);
+
+    const valid = await run({});
+    expect(valid.code).toBe(0);
+    expect((JSON.parse(valid.out) as { rows: Row[] }).rows.some((row) => row.id === "BRG-17" && row.status === "pass")).toBe(true);
+
+    const invalid = await run({ x: 1 });
+    expect(invalid.code).toBe(1);
+    expect(invalid.out).toContain("models");
+    const invalidRows = (JSON.parse(invalid.out) as { rows: Row[] }).rows;
+    expect(
+      invalidRows.some((row) => row.id === "BRG-17" && row.status === "fail" && row.what === "permissions.models is a strict empty object when granted"),
+    ).toBe(true);
+    expect(invalidRows.some((row) => row.id === "MAN-06" && row.status === "fail")).toBe(false);
+
+    const notObject = await run(true);
+    expect(notObject.code).toBe(1);
+    expect(manifestFailures(notObject.out)).toEqual(["BRG-17"]);
+
+    // A key's name is in its error's message; it never picks the check.
+    const worded = await run({ "is not I-JSON": 1 });
+    expect(worded.code).toBe(1);
+    expect(manifestFailures(worded.out)).toEqual(["BRG-17"]);
+
+    // An unknown permission is MAN-06 whatever its name says, and not a models grant.
+    for (const name of ["models_enabled", "models.x", "is not I-JSON", "must be a JSON object", "a\nb"]) {
+      const unknown = await run(undefined, { [name]: true });
+      expect(unknown.code).toBe(1);
+      const unknownRows = (JSON.parse(unknown.out) as { rows: Row[] }).rows;
+      expect(manifestFailures(unknown.out)).toEqual(["MAN-06"]);
+      expect(unknownRows.some((row) => row.id === "BRG-17")).toBe(false);
+    }
+  },
+  MINUTE,
+);
+
+test(
   "BRG-20 passes a well formed badge, fails a malformed one and is skipped, with its reason, when no result carries one",
   async () => {
     const key = (await keygen(tempDir())).path;
@@ -250,6 +314,30 @@ test(
     const failed = (JSON.parse(json.out) as { rows: Row[] }).rows.filter((r) => r.status === "fail");
     expect([...new Set(failed.map((r) => r.id))]).toEqual(["INV-10"]);
     expect(failed[0]?.note).toContain("a prompt result needs text");
+  },
+  MINUTE,
+);
+
+test(
+  "an unknown routine key fails MAN-12, whatever its spelling",
+  async () => {
+    const dir = tempDir();
+    const key = await keygen(dir);
+    const manifest = JSON.parse(await probeSays(["manifest", "--key-id", "probe-test-01"]));
+    const source = join(dir, "board.tsx");
+    writeFileSync(source, await probeSays(["app-source", "board"]));
+
+    for (const name of ["needs", "needs-x", "a\nb", "permissions"]) {
+      const input = join(dir, "manifest.json");
+      const signed = join(dir, "signed.json");
+      writeFileSync(input, JSON.stringify({ ...manifest, routines: [{ [name]: 1 }] }));
+      const sign = await node(SIGNER, [input, "--key-file", key.path, "--app", `board=${source}`, "--out", signed]);
+      expect(sign.code).toBe(0);
+      const done = await node(RUNNER, [...probe("--manifest", signed, "--key-file", key.path), "--json"]);
+      expect(done.code).toBe(1);
+      const failed = (JSON.parse(done.out) as { rows: Row[] }).rows.filter((row) => row.status === "fail" && row.id.startsWith("MAN-"));
+      expect(failed.map((row) => row.id)).toEqual(["MAN-12"]);
+    }
   },
   MINUTE,
 );

@@ -151,8 +151,14 @@ function obj(v, path) {
 
 // Objects that carry an access grant refuse unknown keys (3.4: fail closed).
 function onlyKeys(o, allowed, path) {
-  for (const k of Object.keys(o))
-    if (!allowed.includes(k)) throw invalid(`${path}.${k}`, "is not a known key here (refused: unknown keys in access grants fail closed)");
+  for (const k of Object.keys(o)) {
+    if (allowed.includes(k)) continue;
+    const e = invalid(`${path}.${k}`, "is not a known key here (refused: unknown keys in access grants fail closed)");
+    // Where the key sits, without its name: the runner picks the check from this, never from the message.
+    e.unknownKeyAt = path;
+
+    throw e;
+  }
 }
 
 function int(v, path, lo, hi) {
@@ -324,7 +330,7 @@ function routines(m) {
 
 function permissions(p, m, at) {
   obj(p, at);
-  onlyKeys(p, ["tools", "open", "attach", "pick_file", "storage", "copy", "preview"], at);
+  onlyKeys(p, ["tools", "open", "attach", "pick_file", "storage", "copy", "preview", "models"], at);
 
   for (const [i, t] of list(p.tools, `${at}.tools`, LIMITS.permTools).entries()) {
     if (isV1("reservedTool", t)) throw invalid(`${at}.tools[${i}]`, `${t} is reserved for Buwiz Bot`);
@@ -381,6 +387,18 @@ function permissions(p, m, at) {
     onlyKeys(p.preview, ["max_bytes"], `${at}.preview`);
 
     if (p.preview.max_bytes !== undefined) int(p.preview.max_bytes, `${at}.preview.max_bytes`, 1, LIMITS.previewMaxBytes);
+  }
+
+  if (p.models !== undefined) {
+    try {
+      obj(p.models, `${at}.models`);
+      onlyKeys(p.models, [], `${at}.models`);
+    } catch (e) {
+      // The runner files this under BRG-17 by `check`, never by the message: an unknown key's name is in its message.
+      if (e instanceof V1Error) e.check = "BRG-17";
+
+      throw e;
+    }
   }
 }
 
@@ -693,6 +711,8 @@ function permissionLines(m, p) {
 
   if (p.preview) lines.push("Show print previews (static pages, no scripts)");
 
+  if (p.models) lines.push("Can ask your AI models.");
+
   return lines;
 }
 
@@ -771,6 +791,8 @@ export function addedPermissions(prev, next) {
     if (now.preview && !was.preview) at("show print previews");
     else if (now.preview && (now.preview.max_bytes ?? LIMITS.previewMaxBytes) > (was.preview.max_bytes ?? LIMITS.previewMaxBytes))
       at(`print previews up to ${mb(now.preview.max_bytes ?? LIMITS.previewMaxBytes)}`);
+
+    if (now.models && !was.models) at("Can ask your AI models.");
   }
 
   for (const r of next.routines || []) {
