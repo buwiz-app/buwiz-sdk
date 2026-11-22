@@ -128,8 +128,13 @@ test(
     expect(notObject.code).toBe(1);
     expect(manifestFailures(notObject.out)).toEqual(["BRG-17"]);
 
-    // An unknown permission whose name contains "models" is MAN-06, not a models grant.
-    for (const name of ["models_enabled", "models.x"]) {
+    // A key's name is in its error's message; it never picks the check.
+    const worded = await run({ "is not I-JSON": 1 });
+    expect(worded.code).toBe(1);
+    expect(manifestFailures(worded.out)).toEqual(["BRG-17"]);
+
+    // An unknown permission is MAN-06 whatever its name says, and not a models grant.
+    for (const name of ["models_enabled", "models.x", "is not I-JSON", "must be a JSON object"]) {
       const unknown = await run(undefined, { [name]: true });
       expect(unknown.code).toBe(1);
       const unknownRows = (JSON.parse(unknown.out) as { rows: Row[] }).rows;

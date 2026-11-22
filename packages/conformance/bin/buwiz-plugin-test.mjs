@@ -227,15 +227,16 @@ async function served(spec) {
 function manIdOf(e) {
   const msg = String(e?.message || "");
 
+  // A tagged error is filed by its tag before any message is read: a message can carry a key's name.
+  if (e?.check === "BRG-17") return "BRG-17";
+
   if (e?.code === "protocol_unsupported" || /^(protocol|version):/.test(msg)) return "MAN-04";
 
   if (e?.code === "not_supported") return "MAN-05";
 
-  if (/must be a JSON object|is not I-JSON/.test(msg)) return "MAN-03";
+  if (/^manifest: (must be a JSON object|is not I-JSON)/.test(msg)) return "MAN-03";
 
   if (/^(signature|publisher|id: .* approved|manifest: cannot)/.test(msg)) return "MAN-01";
-
-  if (e?.check === "BRG-17") return "BRG-17";
 
   if (/permissions.*not a known key/.test(msg)) return "MAN-06";
 
