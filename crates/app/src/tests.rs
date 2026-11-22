@@ -159,7 +159,10 @@ fn models_catalog_and_chat_events_match_the_bridge_contract() {
         .unwrap();
     let calls = host.sent.lock().unwrap();
     assert_eq!(calls[1].0, "buwiz.chat");
-    assert_eq!(calls[1].1["messages"][0]["files"][0]["data"], "AAH/");
+    assert_eq!(
+        calls[1].1["messages"][0]["files"][0]["data"], "AAH/",
+        "standard Base64, not base64url"
+    );
     assert!(calls[1].1["messages"][1].get("files").is_none());
     assert!(calls[1].1["messages"][2].get("files").is_none());
     drop(calls);
@@ -592,4 +595,31 @@ fn a_screens_root_fills_the_surface() {
     }
     assert!(!chain.is_empty());
     assert!(chain.iter().all(|h| *h == 480.0), "{chain:?}");
+}
+
+#[test]
+fn chat_file_data_is_padded_standard_base64_on_the_native_wire() {
+    let host = Arc::new(FakeHost {
+        granted: vec!["buwiz.chat"],
+        answer: Mutex::new(Some(Ok(json!({"id": "chat-1"})))),
+        ..Default::default()
+    });
+    let _chat = Bridge::new(host.clone())
+        .chat(ChatRequest {
+            model: "m".to_owned(),
+            effort: None,
+            messages: vec![ChatMessage {
+                role: "user".to_owned(),
+                text: String::new(),
+                files: vec![ChatFile {
+                    name: "a.png".to_owned(),
+                    mime: "image/png".to_owned(),
+                    data: vec![251, 255],
+                }],
+            }],
+        })
+        .unwrap();
+    let calls = host.sent.lock().unwrap();
+    let call = calls.iter().find(|c| c.0 == "buwiz.chat").unwrap();
+    assert_eq!(call.1["messages"][0]["files"][0]["data"], "+/8=");
 }

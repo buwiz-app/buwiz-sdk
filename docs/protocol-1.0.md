@@ -988,12 +988,16 @@ The native `Bridge::chat` calls `buwiz.chat` and receives `{id}`. The host emits
 `buwiz.chat.stop {id}` as a post. Events may arrive before the start reply and are buffered by id; if `stop()` is
 called before the reply, the stop post is sent once the id is known.
 
-| Request field | Rule                                                                                                                                                  |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `model`       | A model id from the catalog; unknown ids reject `invalid_args`.                                                                                       |
-| `effort`      | Optional; must be one of that model's `efforts[].value`, else `invalid_args`.                                                                         |
-| `messages`    | 1 to 64 messages; the last has role `user`. Each has role `user` or `assistant` and `text`; text may be empty only when files are present.            |
-| `files`       | Optional, only on user messages; at most 8 per message. Image MIME types are PNG, JPEG, WebP and GIF; PDF is `application/pdf`. Data is `Uint8Array`. |
+File bytes differ by wire. On the TSX bridge a file's `data` is a `Uint8Array`. On the native wire, where the
+request is JSON, `data` is a string: the bytes in standard Base64 (RFC 4648 section 4, the `+/` alphabet, with `=`
+padding). The limits below count the decoded bytes, not the Base64 text.
+
+| Request field | Rule                                                                                                                                                                                   |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model`       | A model id from the catalog; unknown ids reject `invalid_args`.                                                                                                                        |
+| `effort`      | Optional; must be one of that model's `efforts[].value`, else `invalid_args`.                                                                                                          |
+| `messages`    | 1 to 64 messages; the last has role `user`. Each has role `user` or `assistant` and `text`; text may be empty only when files are present.                                             |
+| `files`       | Optional, only on user messages; at most 8 per message. Image MIME types are PNG, JPEG, WebP and GIF; PDF is `application/pdf`. Data is `Uint8Array` (native: standard Base64, above). |
 
 Text per message is at most 256 KiB. One file is at most 20 MiB and the request's JCS size, counting file bytes
 at their byte length, is at most 32 MiB. Exceeding a file or request quota rejects `quota_exceeded`. An image or

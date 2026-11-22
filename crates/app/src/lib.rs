@@ -376,8 +376,8 @@ pub struct ModelEffort {
     pub label: String,
 }
 
-/// A file sent with a user message. `data` stays in memory and is base64
-/// encoded only for the host bridge.
+/// A file sent with a user message. `data` stays in memory; on the native
+/// wire it is a standard Base64 string with padding (protocol 13.5.1).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ChatFile {
     pub name: String,
