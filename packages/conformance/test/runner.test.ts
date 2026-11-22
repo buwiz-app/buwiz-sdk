@@ -91,10 +91,11 @@ test(
     const source = join(dir, "board.tsx");
     writeFileSync(source, await probeSays(["app-source", "board"]));
 
-    const run = async (models?: object) => {
+    const run = async (models?: unknown, extra: Record<string, unknown> = {}) => {
       const candidate = structuredClone(manifest);
       if (models === undefined) delete candidate.apps[0].permissions.models;
       else candidate.apps[0].permissions.models = models;
+      Object.assign(candidate.apps[0].permissions, extra);
       const input = join(dir, "manifest.json");
       const signed = join(dir, "signed.json");
       writeFileSync(input, JSON.stringify(candidate));
@@ -102,6 +103,9 @@ test(
       expect(sign.code).toBe(0);
       return node(RUNNER, [...probe("--manifest", signed, "--key-file", key.path), "--json"]);
     };
+
+    const manifestFailures = (out: string) =>
+      (JSON.parse(out) as { rows: Row[] }).rows.filter((row) => row.status === "fail" && /^(MAN-|BRG-17$)/.test(row.id)).map((row) => row.id);
 
     const absent = await run();
     expect(absent.code).toBe(0);
@@ -119,6 +123,19 @@ test(
       invalidRows.some((row) => row.id === "BRG-17" && row.status === "fail" && row.what === "permissions.models is a strict empty object when granted"),
     ).toBe(true);
     expect(invalidRows.some((row) => row.id === "MAN-06" && row.status === "fail")).toBe(false);
+
+    const notObject = await run(true);
+    expect(notObject.code).toBe(1);
+    expect(manifestFailures(notObject.out)).toEqual(["BRG-17"]);
+
+    // An unknown permission whose name contains "models" is MAN-06, not a models grant.
+    for (const name of ["models_enabled", "models.x"]) {
+      const unknown = await run(undefined, { [name]: true });
+      expect(unknown.code).toBe(1);
+      const unknownRows = (JSON.parse(unknown.out) as { rows: Row[] }).rows;
+      expect(manifestFailures(unknown.out)).toEqual(["MAN-06"]);
+      expect(unknownRows.some((row) => row.id === "BRG-17")).toBe(false);
+    }
   },
   MINUTE,
 );

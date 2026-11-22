@@ -384,8 +384,15 @@ function permissions(p, m, at) {
   }
 
   if (p.models !== undefined) {
-    obj(p.models, `${at}.models`);
-    onlyKeys(p.models, [], `${at}.models`);
+    try {
+      obj(p.models, `${at}.models`);
+      onlyKeys(p.models, [], `${at}.models`);
+    } catch (e) {
+      // The runner files this under BRG-17 by `check`, never by the message: an unknown key's name is in its message.
+      if (e instanceof V1Error) e.check = "BRG-17";
+
+      throw e;
+    }
   }
 }
 

@@ -235,7 +235,7 @@ function manIdOf(e) {
 
   if (/^(signature|publisher|id: .* approved|manifest: cannot)/.test(msg)) return "MAN-01";
 
-  if (/permissions\.models/.test(msg)) return "BRG-17";
+  if (e?.check === "BRG-17") return "BRG-17";
 
   if (/permissions.*not a known key/.test(msg)) return "MAN-06";
 
