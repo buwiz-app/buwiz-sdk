@@ -31,7 +31,7 @@
 //!         json!({ "protocol": buwiz_plugin::PROTOCOL, "id": Self::ID, "short": "hello" /* … */ })
 //!     }
 //!     fn tools(&self) -> Vec<Tool> {
-//!         vec![Tool { name: "hello_greet", description: "Say hello.", input_schema: json!({"type": "object"}), read_only: true }]
+//!         vec![Tool { name: "hello_greet", description: "Say hello.", input_schema: json!({"type": "object"}), read_only: true, meta: None }]
 //!     }
 //!     fn call(&mut self, _tool: &str, _args: &Args, _caller: &Caller) -> Value {
 //!         ok(json!({ "greeting": "Hello, world" }))
@@ -49,6 +49,7 @@ use serde_json::{Value, json};
 
 pub mod accounts;
 pub mod b64;
+pub mod badge;
 pub mod cli;
 pub mod jcs;
 pub mod key;
@@ -59,10 +60,11 @@ pub mod testing;
 pub mod tickets;
 
 pub use accounts::{Account, Accounts, account_required};
+pub use badge::{Badge, BadgeError, Dot, with_badge};
 pub use manifest::PROTOCOL;
 pub use server::{
     Args, CERT_MAX_MS, Caller, INVALID_PARAMS, INVALID_REQUEST, MCP_PROTOCOL, METHOD_NOT_FOUND,
-    Origin, PARSE_ERROR, Plugin, Press, RESERVED, Server, Tool, serve_stdio,
+    Origin, PARSE_ERROR, Plugin, Press, PressEffect, RESERVED, Server, Tool, serve_stdio,
 };
 pub use tickets::{Tickets, is_ticket, new_ticket};
 

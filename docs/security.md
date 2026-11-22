@@ -1,8 +1,8 @@
 # Security checklist for plugin authors
 
-Buwiz Bot guarantees H1 to H14 of spec 23.1: an app reaches only the bridge, every
+Buwiz Bot guarantees H1 to H16 of spec 23.1: an app reaches only the bridge, every
 call is signed and checked, consent is asked where spec 17 says. Your
-plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
+plugin owns the rest: P1 to P12 of spec 23.2. Tick each before release.
 
 - [ ] **P1 Authorize every resource, not only the app.** The broker has
       checked that the app may call the tool. It has not checked that the caller
@@ -56,7 +56,7 @@ plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
 - [ ] **P5 Side effects need an explicit argument the model cannot supply
       alone.** Filing, sending and paying take a confirmation token that only the
       app's own UI produces, and a tool of those never opts in to the AI's press
-      (spec 16.5).
+      (spec 16.6).
 
   ```js
   if (args.confirm !== pendingGrant.get(args.draft)) return fail("permission_denied", "Confirm in the app first.");
@@ -90,6 +90,11 @@ plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
       process gets `PATH` and the env of its install record, nothing else; leave
       other plugins' data alone.
 
+- [ ] **P12 Keep a badge free of subject data.** A `buwiz/badge` shows on the
+      host's screen, beside a pin, outside your app: a state and a count ("2
+      due", "18h"), never a name, tax identification number, amount or ticket
+      value (spec 16.4).
+
 ## Also
 
 - Tickets in props, links and `_meta["buwiz/open"]`, never raw identifiers
@@ -97,7 +102,7 @@ plugin owns the rest: P1 to P11 of spec 23.2. Tick each before release.
 - `fail(code, message)`: the message is what the user may see; keep it short
   and free of subject data (P11).
 - The runner (`buwiz-plugin-test`) checks P3, P4 and P7 mechanically; P1,
-  P2, P5, P6, P8 to P11 are review items.
+  P2, P5, P6, P8 to P12 are review items.
 
 Section numbers such as spec 4.1 refer to the
 [mini app protocol 1.0 specification](https://github.com/buwiz-app/buwiz-sdk/blob/main/docs/protocol-1.0.md).

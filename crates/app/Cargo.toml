@@ -15,7 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 # the Bot's nsh: the commit its submodule is on (hexuria/nsh tags every
 # `buwiz` tip before a rebuild, so the rev stays fetchable)
-nsh-core = { git = "https://github.com/hexuria/nsh", rev = "c66f78cb4fa67825c51db55909ef5e1ea24f1658" }
+nsh-core = { git = "https://github.com/hexuria/nsh", rev = "3fcb4e58b2aeb8750d78803e356408c4b36c0f55" }
 serde_json = "1"
 # the host answers on its own threads; the screen awaits on the engine
 # thread (nsh's tasks run inside a tokio context)
@@ -24,7 +24,7 @@ tokio = { version = "1", features = ["sync"] }
 base64 = "0.22"
 
 [dev-dependencies]
-nsh-engine = { git = "https://github.com/hexuria/nsh", rev = "c66f78cb4fa67825c51db55909ef5e1ea24f1658" }
+nsh-engine = { git = "https://github.com/hexuria/nsh", rev = "3fcb4e58b2aeb8750d78803e356408c4b36c0f55" }
 
 # Not the workspace's lints: those deny floats, for signed objects. A screen
 # lays out in nsh's f32 pixels (`Viewport`, `fit`) and signs nothing, so

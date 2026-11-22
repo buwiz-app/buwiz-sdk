@@ -173,14 +173,62 @@ busy(false);
 buwiz.meta({ text: "Due in 3 days", pill: true });
 ```
 
+## A badge on a pin: `buwiz/badge`
+
+A tool result may put a dot and up to 8 characters on the pins of one of your apps, so the person sees a
+state without opening it (spec 16.4). Any result of one of your own tools may carry it, so a routine's query tool keeps it up to date
+while the app is closed. Showing it asks the person for nothing.
+
+Both libraries build the badge and check it as it is made: an app id, a dot of `red`, `amber`, `green` or `none`,
+text of 1 to 8 characters with no hidden character (spec 4.2), its plain spaces (U+0020) trimmed from both ends (refused, never cut), a ticket of the
+grammar, and something to show: a dot other than `none`, or text. A clear
+removes it. The host reads it only from a result that did not fail, for your own apps, and strips it before
+the model or an app sees the result.
+
+```rust
+use buwiz_plugin::{Badge, Dot, ok, with_badge};
+use serde_json::json;
+
+// a routine's query tool: the count of what is due, and the badge for the app's pins
+fn notes_due(due: u32) -> serde_json::Value {
+    let result = ok(json!({ "query": "due", "items": [] }));
+    match due {
+        0 => with_badge(result, &Badge::clear("board").unwrap()).unwrap(),
+        // the count alone, capped at "99999+" (6 characters), so it always fits the 8 a badge allows
+        n => {
+            let text = if n > 99_999 { "99999+".to_owned() } else { n.to_string() };
+            with_badge(result, &Badge::new("board", Some(Dot::Amber), Some(&text)).unwrap()).unwrap()
+        }
+    }
+}
+```
+
+```ts
+import { badge, clearBadge, ok, withBadge } from "@buwiz/sdk/plugin";
+
+// a routine's query tool: the count of what is due, and the badge for the app's pins
+const notesDue = (due: number) => {
+  const result = ok({ query: "due", items: [] });
+  // the count alone, capped at "99999+" (6 characters), so it always fits the 8 a badge allows
+  const text = due > 99_999 ? "99999+" : String(due);
+  return withBadge(result, due === 0 ? clearBadge("board") : badge("board", { dot: "amber", text }));
+};
+```
+
+`with_badge` returns a `Result` in Rust and `withBadge` throws in TypeScript when the result's `_meta` is not an object.
+`for_ticket(ticket)` in Rust and `ticket` in TypeScript narrow a badge, or a clear, to the pins that carry that ticket.
+A pin with a ticket shows its own badge, else the one for the app. Keep the text to a state and a count: no
+name, tax identification number, amount or ticket value (P12). A plugin on the Node template sets
+`_meta["buwiz/badge"]` on its result itself.
+
 ## What your tool receives
 
 A bridge call reaches your tool as `tools/call` with the arguments as sent and
-`_meta["buwiz/caller"]` = `{origin, plugin, app, open_id, ts}`, and `press` when the AI made the call (spec 16.1, 16.5).
+`_meta["buwiz/caller"]` = `{origin, plugin, app, open_id, ts}`, and `press` when the AI made the call (spec 16.1, 16.6).
 `origin` is `app` for bridge calls, `agent` for the model, `routine` for a
 routine's query, `resolve` for resolve tools and `widget` for a generated widget
 (`{origin, plugin, widget, ts}`; a tool is offered to widgets by naming `widget` in
-`_meta["buwiz/audience"]`, spec 16.4). A bridge call made while the
+`_meta["buwiz/audience"]`, spec 16.5). A bridge call made while the
 agent, not the person, is driving your screen comes as `agent` too, unless the
 tool has `readOnlyHint: true`: your screen's own reads keep working as `app`, and a
 tool you keep for apps refuses its writes. A write reaches your tool only if the
@@ -196,8 +244,8 @@ change anything.
 A tool that names no `agent` can still take the AI's press, one press at a time,
 if it opts in with `_meta["buwiz/press"] = {approved: true, effect: "post", describe: "<a read>"}`.
 `effect` is `post` or `close`. Anything else, a tool with no `effect`, or a tool whose
-name has the word file, filing, submit, send, queue, pay, paid, void or reopen (words are the runs of letters and digits,
-so `ledger_pay_run` has `pay` and `sendmail` has none), is refused: filing is never the AI's.
+name has a character outside a-z, 0-9, `_`, `.` and `-`, or contains file, filing, submit, send, sent, queue, pay,
+paid, void or reopen after its first `_` (so `ledger_payment_create` has `pay`, and `sentry_post_note` has none), is refused: filing is never the AI's.
 Buwiz Bot holds the call unsent and shows the person a card with Not now and Allow.
 `describe` is a read of yours (`readOnlyHint: true`, and in the app's
 `permissions.tools`): it gets `{tool, args}` and answers `structuredContent`
@@ -250,10 +298,53 @@ if (args.kind === "command" && !args.value) return ok({ result: "prompt", text: 
 An attachable scope must answer `token` for a value it offered as a choice:
 `buwiz.attach` and the composer rely on it (spec 13.5, 15.1).
 
+## Declaring who may use a tool
+
+A tool says who may use it in its `tools/list` entry (spec 16.5, 16.6): `_meta["buwiz/audience"]`
+is an array of words (`"agent"`, `"widget"`), and `_meta["buwiz/press"]` opts a write in to the
+AI's press. Both libraries build the entry from the tool; `_meta` is shown as given, and the key
+is left out when the tool has none.
+
+The host offers a widget only the tools whose audience names `"widget"`. Both libraries check
+it again: a call with `origin: "widget"` to any other tool is refused before the tool runs.
+
+```rust
+use buwiz_plugin::{PressEffect, Tool};
+
+// `peek` is a read tool of the plugin; `notes_post` is a write the AI may press once allowed
+let peek = Tool { name: "notes_peek", description: "Peek.", input_schema, read_only: true, meta: None }
+    .with_audience(&["agent", "widget"]);
+let post = Tool { name: "notes_post", description: "Post.", input_schema, read_only: false, ..Tool::default() }
+    .with_press(PressEffect::Post, "notes_peek");
+```
+
+```ts
+import { withAudience, withPress } from "@buwiz/sdk/plugin";
+
+const peek = withAudience({ name: "notes_peek", description: "Peek.", inputSchema, readOnly: true }, ["agent", "widget"]);
+const post = withPress({ name: "notes_post", description: "Post.", inputSchema, readOnly: false }, "post", "notes_peek");
+```
+
+`with_press` and `withPress` always write `approved: true`; the audience is always an array. Any
+other `_meta` key goes in the tool's `meta` field in Rust and its `_meta` field in TypeScript. A
+plugin on the Node template passes `_meta` on the tool object itself.
+
+Naming `"agent"` on a tool that is not read-only does more than list it for the model: by
+section 16.6 of the guide the AI's press on an app's screen may then run that write with no Allow
+card. When the person should be asked each time, leave `"agent"` out and opt in with the press.
+
+A plugin must not opt in a tool that files, submits, sends, pays, voids or reopens, whatever it is
+called (P5, spec 16.6); the host's name rule is only a backstop. Both libraries fail closed on
+the opt-in: `tools/list` leaves out a `buwiz/press` whose `describe` is empty or does not name a
+read-only tool of the same list, lists the tool without it, and writes one line to stderr naming
+the tool and the reason. A hand-written `_meta` gets the same check.
+
 ## Reserved tools (Buwiz Bot to your plugin)
 
 `lib/buwiz-plugin.mjs` implements these; you only need them if you write your
-own (spec 10).
+own (spec 10). The host makes these calls with no `buwiz/caller`. Both libraries
+and the helper refuse a reserved call that names one, so no caller can open a
+session for itself.
 
 | Tool                   | Input                                             | Answer                                                                                        |
 | ---------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -280,6 +371,7 @@ Buwiz Bot renders your app in Buwiz Bot's own light or dark setting, not the OS'
 | `buwiz.fit` heights per second per open                    | 8 (the last waits for a slot; under 2 points ignored)                           |
 | `buwiz.actions`                                            | 3 buttons; id 64 chars `[A-Za-z0-9_.:-]`; label 24 chars, one line; one primary |
 | `buwiz.meta` / `buwiz.settle`                              | 32 / 120 chars, one line                                                        |
+| `buwiz/badge` text                                         | 8 chars, one line; one change a second per badge                                |
 | Resolve `prompt` text                                      | 4000 chars, commands only                                                       |
 | Bridge call timeout                                        | 30 s (host), 120 s (broker to plugin)                                           |
 | Resolve timeout                                            | 10 s                                                                            |

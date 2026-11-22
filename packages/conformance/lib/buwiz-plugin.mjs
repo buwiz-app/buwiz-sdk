@@ -86,7 +86,7 @@ export function ticketStore() {
  *
  *   manifestFile  path of the signed manifest (read on every request)
  *   apps          {appId: path of the .tsx source}
- *   tools         [{name, description, inputSchema, annotations?, run(args, caller, extra)}]
+ *   tools         [{name, description, inputSchema, annotations?, _meta?, run(args, caller, extra)}]
  *                 `caller` is _meta["buwiz/caller"] (16.1): {origin, plugin, app?, open_id?, routine?, press?, ts}
  *   ticketTitle   (subject) => the title buwiz.ticket.resolve shows
  *   instructions  MCP server instructions (approved text, 18.3), optional
@@ -168,12 +168,23 @@ export async function startPlugin(opts) {
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
       ...Object.keys(reserved).map((n) => ({ name: n, description: "Reserved for Buwiz Bot.", inputSchema: { type: "object" } })),
-      ...tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema || { type: "object" }, annotations: t.annotations })),
+      ...tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema || { type: "object" },
+        annotations: t.annotations,
+        ...(t._meta ? { _meta: t._meta } : {}),
+      })),
     ],
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     const { name: tool, arguments: args = {}, _meta: meta } = req.params;
+
+    // the reserved tools are the host's own calls, which carry no caller: one that names a
+    // caller, whoever it says it is, is not the host's
+    if (typeof tool === "string" && tool.startsWith("buwiz.") && meta?.["buwiz/caller"] != null)
+      return fail("permission_denied", "a reserved tool is the host's own to call");
 
     // provision first; no other buwiz.* tool works without a key either
     if (tool === "buwiz.provision") return provision(args);

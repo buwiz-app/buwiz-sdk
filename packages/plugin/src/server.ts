@@ -77,13 +77,67 @@ export interface Tool {
   /** Changes nothing. Resolve tools, a routine's query and a routine's turn
    *  may call only read-only tools (and a routine's declared writes). */
   readOnly: boolean;
+  /** The tool's `_meta`, shown in tools/list as given (a `buwiz/press` opt-in
+   *  whose `describe` names no read-only tool of the list is left out); absent
+   *  leaves the key out. `withAudience` and `withPress` write into it. */
+  _meta?: Record<string, Json>;
+}
+
+/** What an approved AI press does (spec 16.6). */
+export type PressEffect = "post" | "close";
+
+const withMeta = (tool: Tool, key: string, value: Json): Tool => ({ ...tool, _meta: { ...tool._meta, [key]: value } });
+
+/** `tool` with `_meta["buwiz/audience"]` set to `words` ("agent", "widget";
+ *  spec 16.5), always as an array.
+ *
+ *  Naming "agent" on a tool that is not read-only does more than list it for
+ *  the model: by spec 16.6 the AI's press on an app's screen may then run that
+ *  write with no Allow card. When the person should be asked each time, leave
+ *  "agent" out and opt in with `withPress`. */
+export const withAudience = (tool: Tool, words: string[]): Tool => withMeta(tool, "buwiz/audience", [...words]);
+
+/** `tool` opted in to the AI's press: `_meta["buwiz/press"]` is
+ *  `{approved: true, effect, describe}` (spec 16.6), and the person gets an
+ *  Allow card each time. `describe` names a read-only tool of the plugin;
+ *  tools/list leaves the opt-in out (and writes a line to stderr) when it is
+ *  empty or names no read-only tool of the list.
+ *
+ *  A plugin MUST NOT opt in a tool that files, submits, sends, pays, voids or
+ *  reopens, whatever it is called (P5, spec 16.6); the host's name rule is only
+ *  a backstop. */
+export const withPress = (tool: Tool, effect: PressEffect, describe: string): Tool => withMeta(tool, "buwiz/press", { approved: true, effect, describe });
+
+/** The `_meta` tools/list shows for `tool`: its press opt-in is dropped, with a
+ *  line on stderr, unless `describe` names a read-only tool of `tools`. */
+function listedMeta(tool: Tool, tools: Tool[]): Record<string, Json> | undefined {
+  if (!tool._meta) return undefined;
+  const meta = { ...tool._meta };
+  if ("buwiz/press" in meta) {
+    const press = meta["buwiz/press"];
+    const describe = press && typeof press === "object" && !Array.isArray(press) ? press.describe : undefined;
+    const target = typeof describe === "string" && describe !== "" ? tools.find((t) => t.name === describe) : undefined;
+    const why =
+      typeof describe !== "string" || describe === ""
+        ? "describe is empty"
+        : !target
+          ? "describe names no tool of the plugin"
+          : !target.readOnly
+            ? "describe names a tool that is not read-only"
+            : "";
+    if (why) {
+      console.error(`${tool.name}: buwiz/press left out, ${why}`);
+      delete meta["buwiz/press"];
+    }
+  }
+  return Object.keys(meta).length ? meta : undefined;
 }
 
 /** Who asked: _meta["buwiz/caller"]. "unknown": the broker sent none, or an
  *  origin this library does not know; it only reads. */
 export type Origin = "app" | "agent" | "routine" | "resolve" | "widget" | "unknown";
 
-/** The record of an AI's press: _meta["buwiz/caller"].press (spec 16.5). Only
+/** The record of an AI's press: _meta["buwiz/caller"].press (spec 16.6). Only
  *  the host sets it, on a call the person did not make. */
 export type Press =
   | { by: "ai"; who: string }
@@ -109,9 +163,9 @@ export interface Caller {
   openId?: string;
   /** The routine whose turn or query this is. */
   routine?: string;
-  /** The widget's name (R37), for "widget" (spec 16.4). */
+  /** The widget's name (R37), for "widget" (spec 16.5). */
   widget?: string;
-  /** The record of the AI's press, when the AI made the call (spec 16.5). An
+  /** The record of the AI's press, when the AI made the call (spec 16.6). An
    *  "app" call that has one is a read the AI made, not the person's act. */
   press?: Press;
   /** `account`'s live token: its "default" sign-in, else any live one.
@@ -132,6 +186,13 @@ function pressOf(record: unknown): Press | undefined {
   if (r.by !== "ai_approved" || approvedBy === undefined || once === undefined || argsHash === undefined || shownHash === undefined) return undefined;
   if (typeof at !== "number" || !Number.isSafeInteger(at) || at < 0) return undefined;
   return { by: "ai_approved", who, approvedBy, once, argsHash, shownHash, at };
+}
+
+/** Whether a tools/call names a caller at all: _meta["buwiz/caller"] is there
+ *  and not null, whatever it says. The host's own reserved calls name none. */
+function callerNamed(params: Record<string, unknown>): boolean {
+  const named = (params._meta as Record<string, unknown> | undefined)?.["buwiz/caller"];
+  return named !== undefined && named !== null;
 }
 
 export function callerOf(params: Record<string, unknown>, accounts: Accounts = new Accounts()): Caller {
@@ -246,15 +307,24 @@ export class Server<P extends Plugin = Plugin> {
         };
       case "ping":
         return {};
-      case "tools/list":
+      case "tools/list": {
+        const tools = this.plugin.tools();
         return {
           tools: [
             ...RESERVED.map((name) => ({ name, description: "Reserved for the Buwiz Bot.", inputSchema: { type: "object" } })),
-            ...this.plugin
-              .tools()
-              .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema, annotations: { readOnlyHint: t.readOnly } })),
+            ...tools.map((t) => {
+              const meta = listedMeta(t, tools);
+              return {
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema,
+                annotations: { readOnlyHint: t.readOnly },
+                ...(meta ? { _meta: meta } : {}),
+              };
+            }),
           ],
         };
+      }
       case "tools/call":
         return this.#toolsCall(params);
       case "resources/list":
@@ -274,7 +344,12 @@ export class Server<P extends Plugin = Plugin> {
     const raw = params.arguments ?? {};
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return fail("invalid_args", "arguments must be a JSON object");
     const args = raw as Args;
-    if (name.startsWith("buwiz.")) return this.#reserved(name, args);
+    if (name.startsWith("buwiz.")) {
+      // the host's own calls, which carry no caller: one that names a caller,
+      // whoever it says it is, is not the host's
+      if (callerNamed(params)) return fail("permission_denied", "a reserved tool is the host's own to call");
+      return this.#reserved(name, args);
+    }
     // P7: nothing before a successful provision
     if (!this.#key) throw new RpcError(INVALID_REQUEST, "buwiz.provision must come first");
     const tool = this.plugin.tools().find((t) => t.name === name);
@@ -300,9 +375,16 @@ export class Server<P extends Plugin = Plugin> {
    *    permissions.tools;
    *  - a resolve, a routine's query and a caller this library does not know
    *    only read;
-   *  - a routine's turn only reads, or calls a write its routine declares. */
+   *  - a routine's turn only reads, or calls a write its routine declares;
+   *  - a generated widget reaches only a tool whose audience names "widget"
+   *    (spec 16.5), read or write, and its call names no app, open or press. */
   authorize(tool: Tool, caller: Caller): string | undefined {
     const served = this.served.value();
+    if (caller.origin === "widget") {
+      if (caller.app !== undefined || caller.openId !== undefined || caller.press !== undefined) return "a widget's call names no app, open or press";
+      const audience = tool._meta?.["buwiz/audience"];
+      if (!Array.isArray(audience) || !audience.includes("widget")) return `${tool.name} is not offered to widgets`;
+    }
     if (caller.origin === "app" || caller.app !== undefined || caller.openId !== undefined) {
       if (!caller.app) return "an app call names no app";
       if (this.#sessions.get(caller.openId ?? "") !== caller.app) return "this app open was not certified by this plugin";

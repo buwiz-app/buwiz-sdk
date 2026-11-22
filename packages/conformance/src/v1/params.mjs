@@ -13,6 +13,7 @@ const NAME = /^[a-z][a-z0-9_]{0,39}$/;
 const SCALARS = new Set(["string", "integer", "number", "boolean"]);
 const KEYS = new Set(["type", "description", "enum", "maxLength", "items", "maxItems"]);
 export const PARAMS_MAX_BYTES = 4096;
+export const PARAMS_MAX_PROPERTIES = 16;
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -26,7 +27,7 @@ export function schemaProblem(schema) {
   if (schema.additionalProperties !== undefined && schema.additionalProperties !== false) return "additionalProperties may only be false";
   const names = Object.keys(schema.properties);
 
-  if (!names.length || names.length > 16) return "declares 1 to 16 properties";
+  if (!names.length || names.length > PARAMS_MAX_PROPERTIES) return `declares 1 to ${PARAMS_MAX_PROPERTIES} properties`;
 
   for (const n of names) {
     if (!NAME.test(n)) return `property ${n.slice(0, 40)} is not a lower snake case name`;

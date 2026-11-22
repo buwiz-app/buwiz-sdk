@@ -1,0 +1,28 @@
+{
+  "protocol": "1.0.0",
+  "id": "com.example.reserved",
+  "short": "reserved",
+  "version": "0.1.0",
+  "title": "Reserved",
+  "description": "A plugin for the conformance runner's own tests of the reserved tools.",
+  "publisher": {
+    "id": "com.example",
+    "key_id": "example-key-01",
+    "name": "Example Publisher"
+  },
+  "apps": [
+    {
+      "id": "board",
+      "title": "Board",
+      "description": "The list.",
+      "entry": "buwiz-app://board",
+      "mime": "text/x-nsh-tsx",
+      "sdk": "1",
+      "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "placement": ["full"],
+      "permissions": {
+        "tools": ["reserved_list"]
+      }
+    }
+  ]
+}

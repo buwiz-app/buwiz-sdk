@@ -60,7 +60,7 @@ tool with `_meta["buwiz/caller"]` saying who asked (spec 14).
 
 - [manifest.md](manifest.md): every field and limit.
 - [bridge.md](bridge.md): the `buwiz` object apps use.
-- [security.md](security.md): what your plugin must do (P1 to P11).
+- [security.md](security.md): what your plugin must do (P1 to P12).
 - [testing.md](testing.md): the runner and what it checks.
 
 Section numbers such as spec 4.1 refer to the

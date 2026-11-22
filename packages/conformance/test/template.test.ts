@@ -26,7 +26,7 @@ test(
   async () => {
     const key = (await keygen(tempDir())).path;
     const done = await node(RUNNER, ["--command", process.execPath, "--args", join(TEMPLATE, "server.mjs"), "--sign-with", key]);
-    expect(done.out.trimEnd().split("\n").pop()).toMatch(/^\d+ pass, 0 fail, 0 skipped: conforms$/);
+    expect(done.out.trimEnd().split("\n").pop()).toMatch(/^\d+ pass, 0 fail, 1 skipped: conforms$/); // the one skip is BRG-20: the template returns no badge
     expect(done.code).toBe(0);
   },
   MINUTE,
@@ -64,6 +64,36 @@ test(
       ]) {
         expect(code(await open(bad)), JSON.stringify(bad)).toBe("invalid_args");
       }
+    } finally {
+      await client.close();
+    }
+  },
+  MINUTE,
+);
+
+test(
+  "the helper shows a tool's _meta in tools/list and leaves the key out when there is none",
+  async () => {
+    const client = new Client({ name: "template-test", version: "1.0.0" });
+    await client.connect(
+      new StdioClientTransport({ command: "node", args: [join(import.meta.dir, "fixtures/meta-plugin.mjs")], env: { PATH: process.env.PATH ?? "" } }),
+    );
+    try {
+      const tools = (await client.listTools()).tools;
+      const by = (name: string) => tools.find((t) => t.name === name)!;
+      expect("_meta" in by("hello_plain")).toBe(false);
+      expect(by("hello_plain").annotations?.readOnlyHint).toBe(true);
+      expect(by("hello_peek")._meta).toEqual({ "buwiz/audience": ["agent", "widget"] });
+      expect(by("hello_peek").annotations?.readOnlyHint).toBe(true);
+      expect(by("hello_post")._meta).toEqual({ "buwiz/press": { approved: true, effect: "post", describe: "hello_peek" } });
+      expect(by("hello_post").annotations?.readOnlyHint).toBe(false);
+      expect(by("hello_raw")._meta).toEqual({ "vendor/x": 1 });
+      // a reserved tool is the host's own: a call that names a caller is refused before
+      // anything else, and one that names none goes on to the helper's own rules
+      const named = await client.callTool({ name: "buwiz.session.close", arguments: {}, _meta: { "buwiz/caller": { origin: "agent" } } });
+      expect(named.isError).toBe(true);
+      expect((named.structuredContent as { code: string }).code).toBe("permission_denied");
+      await expect(client.callTool({ name: "buwiz.session.close", arguments: {} })).rejects.toThrow("buwiz.provision must come first");
     } finally {
       await client.close();
     }

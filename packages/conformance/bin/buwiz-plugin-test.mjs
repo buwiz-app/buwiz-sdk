@@ -47,7 +47,17 @@ import { isObject, isString, parseIJson, signedBytes } from "../src/v1/jcs.mjs";
 import { fileKeystore } from "../src/v1/keystore.mjs";
 import { HOST_PROTOCOL, MANIFEST_URI, NATIVE_ABIS, NATIVE_SCREEN, checkTools, manifestHash, permsDigest, verifyManifest } from "../src/v1/manifest.mjs";
 import { createPlugins, resultData } from "../src/v1/plugins.mjs";
-import { MAX_PER_SECOND, PROMPT_MAX, RATE_WINDOW_MS, checkOpen, checkPrompt, createSessions, SOURCE_MAX } from "../src/v1/sessions.mjs";
+import {
+  MAX_PER_SECOND,
+  PROMPT_MAX,
+  RATE_WINDOW_MS,
+  audienceProblem,
+  checkOpen,
+  checkPrompt,
+  createSessions,
+  pressProblem,
+  SOURCE_MAX,
+} from "../src/v1/sessions.mjs";
 import { fingerprintOf, signManifest } from "../src/v1/sign-manifest.mjs";
 import { TRUST_FILE, isApproved, loadTrust } from "../src/v1/trust.mjs";
 import { newTicket } from "../lib/buwiz-plugin.mjs";
@@ -426,6 +436,22 @@ export async function runPluginTest(o) {
         return `${own.length} tools`;
       });
     else skip("MAN-10", "tool names", "the manifest did not verify");
+
+    // the declarations the host reads to keep a tool off the model's list or to take the AI's press
+    await run("MAN-15", "a tool that declares buwiz/press with approved: true can take the AI's press (16.6)", () => {
+      const bad = own.map((t) => [t.name, pressProblem(t)]).filter(([, why]) => why);
+
+      expect(bad.length === 0, bad.map(([name, why]) => `${name}: ${why}`).join("; "));
+
+      return `${own.filter((t) => t._meta?.["buwiz/press"]?.approved === true).length} declared`;
+    });
+    await run("MAN-16", "a tool's buwiz/audience, when present, is an array (16.5)", () => {
+      const bad = own.filter((t) => audienceProblem(t));
+
+      expect(bad.length === 0, `${bad.map((t) => t.name).join(", ")}: buwiz/audience is not an array, so the host keeps the tool off the model's list`);
+
+      return `${own.filter((t) => t._meta?.["buwiz/audience"] !== undefined).length} declared`;
+    });
 
     for (const a of m?.apps || []) await (a.native !== undefined ? nativeChecks(m, a, trust(), run, skip) : appChecks(raw, a, run));
 
@@ -820,7 +846,6 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
 
         // an isError answer still went through the signed path
         expect(code === "resolved" || code === "tool_error", `${tool}: ${code}`);
-
         return code === "tool_error" ? "answered isError for {} args" : "";
       });
 
@@ -940,6 +965,19 @@ async function brokerChecks(plugins, sessions, m, runAny, skip) {
       expect(titleOnly(d), `fields other than valid and title: ${Object.keys(d).join(", ")}`);
       expect([...d.title].length <= 120, "the title is over 120 characters");
     });
+
+  // BRG-20: the badge of every tool result this run obtained is well formed (16.4), whichever call
+  // asked for it: the app's signed calls and the resolves, raw and through the broker. The host records
+  // each as it hands the result back (`plugins.badgesSeen`). A routine's query is not one of them: the
+  // runner makes no routine call, so a badge only a routine's query returns is not checked here.
+  const badges = plugins.badgesSeen;
+  const malformed = badges.filter((b) => b.problem);
+
+  if (!badges.length) skip("BRG-20", "a buwiz/badge on a tool result the run obtains is well formed (16.4)", "no tool result this run obtained carried one");
+  else
+    await run("BRG-20", `a buwiz/badge on a tool result the run obtains is well formed (16.4): ${badges.length} checked`, () =>
+      expect(!malformed.length, `malformed, so the host drops it: ${malformed.map((b) => `${b.tool}: ${b.problem}`).join("; ")}`),
+    );
 }
 
 // ── output ───────────────────────────────────────────────────────────────

@@ -51,7 +51,7 @@ pub const CERT_MAX_MS: i64 = 8 * 3600 * 1000;
 pub type Args = Map<String, Value>;
 
 /// One of the plugin's own tools, as `tools/list` shows it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Tool {
     /// `<short>_<name>`.
     pub name: &'static str,
@@ -62,6 +62,90 @@ pub struct Tool {
     /// Changes nothing. Resolve tools, a routine's query and a routine's
     /// turn may call only read-only tools (and a routine's declared writes).
     pub read_only: bool,
+    /// The tool's `_meta`, shown unchanged in `tools/list`; `None` leaves the
+    /// key out. [`Tool::with_audience`] and [`Tool::with_press`] write into it.
+    pub meta: Option<Map<String, Value>>,
+}
+
+/// What an approved AI press does (spec 16.6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PressEffect {
+    /// The call posts something.
+    Post,
+    /// The call closes something.
+    Close,
+}
+
+impl PressEffect {
+    fn as_str(self) -> &'static str {
+        match self {
+            PressEffect::Post => "post",
+            PressEffect::Close => "close",
+        }
+    }
+}
+
+impl Tool {
+    fn with_meta(mut self, key: &str, value: Value) -> Self {
+        self.meta
+            .get_or_insert_with(Map::new)
+            .insert(key.into(), value);
+        self
+    }
+
+    /// Sets `_meta["buwiz/audience"]` to `words` (`"agent"`, `"widget"`; spec
+    /// 16.5), always as an array.
+    ///
+    /// Naming `"agent"` on a tool that is not read-only does more than list it
+    /// for the model: by spec 16.6 the AI's press on an app's screen may then
+    /// run that write with no Allow card. When the person should be asked each
+    /// time, leave `"agent"` out and opt in with [`Tool::with_press`].
+    pub fn with_audience(self, words: &[&str]) -> Self {
+        self.with_meta("buwiz/audience", json!(words))
+    }
+
+    /// Opts the tool in to the AI's press: `_meta["buwiz/press"]` is
+    /// `{approved: true, effect, describe}` (spec 16.6), and the person gets an
+    /// Allow card each time. `describe` names a read-only tool of the plugin;
+    /// `tools/list` leaves the opt-in out (and writes a line to stderr) when it
+    /// is empty or names no read-only tool of the list.
+    ///
+    /// A plugin MUST NOT opt in a tool that files, submits, sends, pays, voids
+    /// or reopens, whatever it is called (P5, spec 16.6); the host's name rule
+    /// is only a backstop.
+    pub fn with_press(self, effect: PressEffect, describe: &str) -> Self {
+        self.with_meta(
+            "buwiz/press",
+            json!({ "approved": true, "effect": effect.as_str(), "describe": describe }),
+        )
+    }
+
+    /// Whether the tool's `_meta["buwiz/audience"]` is an array naming `word`.
+    fn offered_to(&self, word: &str) -> bool {
+        self.meta
+            .as_ref()
+            .and_then(|meta| meta.get("buwiz/audience"))
+            .and_then(Value::as_array)
+            .is_some_and(|words| words.iter().any(|w| w.as_str() == Some(word)))
+    }
+}
+
+/// Why a tool's `buwiz/press` opt-in is not listed, if it is not: `describe`
+/// must name a read-only tool of the same list.
+fn press_refusal(meta: &Map<String, Value>, tools: &[Tool]) -> Option<&'static str> {
+    let describe = meta
+        .get("buwiz/press")?
+        .get("describe")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if describe.is_empty() {
+        return Some("describe is empty");
+    }
+    match tools.iter().find(|t| t.name == describe) {
+        None => Some("describe names no tool of the plugin"),
+        Some(t) if !t.read_only => Some("describe names a tool that is not read-only"),
+        Some(_) => None,
+    }
 }
 
 /// Who asked: `_meta["buwiz/caller"]`.
@@ -75,13 +159,13 @@ pub enum Origin {
     Routine,
     /// A command's or scope's resolve.
     Resolve,
-    /// A generated widget, on a tool offered to widgets (spec 16.4).
+    /// A generated widget, on a tool offered to widgets (spec 16.5).
     Widget,
     /// No caller, or an origin this library does not know. It only reads.
     Unknown,
 }
 
-/// The record of an AI's press: `_meta["buwiz/caller"].press` (spec 16.5).
+/// The record of an AI's press: `_meta["buwiz/caller"].press` (spec 16.6).
 /// Only the host sets it, on a call the person did not make.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Press {
@@ -140,7 +224,7 @@ pub struct Caller {
     pub routine: Option<String>,
     /// The widget's name (`R37`), for [`Origin::Widget`].
     pub widget: Option<String>,
-    /// The record of the AI's press, when the AI made the call (spec 16.5).
+    /// The record of the AI's press, when the AI made the call (spec 16.6).
     /// An `Origin::App` call that has one is a read the AI made, not the
     /// person's act.
     pub press: Option<Press>,
@@ -151,6 +235,16 @@ pub struct Caller {
 }
 
 impl Caller {
+    /// Whether a `tools/call` names a caller at all: `_meta["buwiz/caller"]`
+    /// is there and not null, whatever it says. The host's own reserved
+    /// calls name none.
+    fn named(params: &Value) -> bool {
+        params
+            .get("_meta")
+            .and_then(|meta| meta.get("buwiz/caller"))
+            .is_some_and(|caller| !caller.is_null())
+    }
+
     /// `_meta["buwiz/caller"]` of a `tools/call`.
     pub fn of(params: &Value) -> Self {
         let caller = params
@@ -331,14 +425,30 @@ impl<P: Plugin> Server<P> {
             .iter()
             .map(|name| json!({ "name": name, "description": "Reserved for the Buwiz Bot.", "inputSchema": { "type": "object" } }))
             .collect();
-        list.extend(self.plugin.tools().into_iter().map(|tool| {
-            json!({
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.input_schema,
-                "annotations": { "readOnlyHint": tool.read_only },
+        let tools = self.plugin.tools();
+        let entries: Vec<Value> = tools
+            .iter()
+            .map(|tool| {
+                let mut entry = json!({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": tool.input_schema,
+                    "annotations": { "readOnlyHint": tool.read_only },
+                });
+                if let Some(meta) = &tool.meta {
+                    let mut meta = meta.clone();
+                    if let Some(why) = press_refusal(&meta, &tools) {
+                        eprintln!("{}: buwiz/press left out, {why}", tool.name);
+                        meta.remove("buwiz/press");
+                    }
+                    if !meta.is_empty() {
+                        entry["_meta"] = Value::Object(meta);
+                    }
+                }
+                entry
             })
-        }));
+            .collect();
+        list.extend(entries);
         json!({ "tools": list })
     }
 
@@ -354,6 +464,14 @@ impl<P: Plugin> Server<P> {
             Some(_) => return Ok(fail("invalid_args", "arguments must be a JSON object")),
         };
         if name.starts_with("buwiz.") {
+            // the host's own calls, which carry no caller: one that names a
+            // caller, whoever it says it is, is not the host's
+            if Caller::named(params) {
+                return Ok(fail(
+                    "permission_denied",
+                    "a reserved tool is the host's own to call",
+                ));
+            }
             return self.reserved(name, arguments);
         }
         // P7: nothing before a successful provision
@@ -379,10 +497,21 @@ impl<P: Plugin> Server<P> {
     ///   `permissions.tools`;
     /// - a resolve, a routine's query and a caller this library does not
     ///   know only read;
-    /// - a routine's turn only reads, or calls a write its routine declares.
+    /// - a routine's turn only reads, or calls a write its routine declares;
+    /// - a generated widget reaches only a tool whose audience names
+    ///   `"widget"` (spec 16.5), read or write, and its call names no app,
+    ///   open or press.
     pub fn authorize(&self, tool: &Tool, caller: &Caller) -> Result<(), String> {
         let name = tool.name;
         let served = self.served.value()?;
+        if caller.origin == Origin::Widget {
+            if caller.app.is_some() || caller.open_id.is_some() || caller.press.is_some() {
+                return Err("a widget's call names no app, open or press".into());
+            }
+            if !tool.offered_to("widget") {
+                return Err(format!("{name} is not offered to widgets"));
+            }
+        }
         if caller.origin == Origin::App || caller.app.is_some() || caller.open_id.is_some() {
             let app = caller.app.as_deref().ok_or("an app call names no app")?;
             let open = caller.open_id.as_deref().unwrap_or("");
