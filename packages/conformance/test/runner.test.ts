@@ -317,3 +317,27 @@ test(
   },
   MINUTE,
 );
+
+test(
+  "an unknown routine key fails MAN-12, whatever its spelling",
+  async () => {
+    const dir = tempDir();
+    const key = await keygen(dir);
+    const manifest = JSON.parse(await probeSays(["manifest", "--key-id", "probe-test-01"]));
+    const source = join(dir, "board.tsx");
+    writeFileSync(source, await probeSays(["app-source", "board"]));
+
+    for (const name of ["needs", "needs-x", "a\nb", "permissions"]) {
+      const input = join(dir, "manifest.json");
+      const signed = join(dir, "signed.json");
+      writeFileSync(input, JSON.stringify({ ...manifest, routines: [{ [name]: 1 }] }));
+      const sign = await node(SIGNER, [input, "--key-file", key.path, "--app", `board=${source}`, "--out", signed]);
+      expect(sign.code).toBe(0);
+      const done = await node(RUNNER, [...probe("--manifest", signed, "--key-file", key.path), "--json"]);
+      expect(done.code).toBe(1);
+      const failed = (JSON.parse(done.out) as { rows: Row[] }).rows.filter((row) => row.status === "fail" && row.id.startsWith("MAN-"));
+      expect(failed.map((row) => row.id)).toEqual(["MAN-12"]);
+    }
+  },
+  MINUTE,
+);
