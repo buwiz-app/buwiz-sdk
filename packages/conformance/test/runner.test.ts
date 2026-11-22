@@ -114,6 +114,11 @@ test(
     const invalid = await run({ x: 1 });
     expect(invalid.code).toBe(1);
     expect(invalid.out).toContain("models");
+    const invalidRows = (JSON.parse(invalid.out) as { rows: Row[] }).rows;
+    expect(
+      invalidRows.some((row) => row.id === "BRG-17" && row.status === "fail" && row.what === "permissions.models is a strict empty object when granted"),
+    ).toBe(true);
+    expect(invalidRows.some((row) => row.id === "MAN-06" && row.status === "fail")).toBe(false);
   },
   MINUTE,
 );

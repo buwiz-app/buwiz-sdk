@@ -235,6 +235,8 @@ function manIdOf(e) {
 
   if (/^(signature|publisher|id: .* approved|manifest: cannot)/.test(msg)) return "MAN-01";
 
+  if (/permissions\.models/.test(msg)) return "BRG-17";
+
   if (/permissions.*not a known key/.test(msg)) return "MAN-06";
 
   if (/^routines\[\d+\]\.\w+: is not a known key/.test(msg)) return "MAN-12";
@@ -388,7 +390,8 @@ export async function runPluginTest(o) {
       m = verifyManifest(text, trust()).manifest;
     } catch (e) {
       failedId = manIdOf(e);
-      rows.push({ id: failedId, what: "the manifest verifies (6.2)", status: "fail", note: errText(e) });
+      const what = failedId === "BRG-17" ? "permissions.models is a strict empty object when granted" : "the manifest verifies (6.2)";
+      rows.push({ id: failedId, what, status: "fail", note: errText(e) });
     }
 
     for (const [id, what] of MAN_ROWS) {

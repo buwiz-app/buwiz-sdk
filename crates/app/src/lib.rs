@@ -769,11 +769,14 @@ impl Bridge {
                         })
                     })
                     .collect();
-                json!({
+                let mut value = json!({
                     "role": message.role,
                     "text": message.text,
-                    "files": files,
-                })
+                });
+                if !files.is_empty() {
+                    value["files"] = json!(files);
+                }
+                value
             })
             .collect();
         let mut data = serde_json::Map::new();

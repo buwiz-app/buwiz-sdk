@@ -982,6 +982,12 @@ contains no provider routes, connection details, keys or URLs. `inputs` always c
 appended text chunks in order and returns an unsubscribe function. `done` resolves to the complete text and
 `stop_reason` (`end`, `max_tokens` or `stopped`). `stop()` ends an active stream; after completion it does nothing.
 
+The native `Bridge::chat` calls `buwiz.chat` and receives `{id}`. The host emits
+`buwiz.chat.delta {id, text}`, `buwiz.chat.done {id, text, stop_reason}` or
+`buwiz.chat.error {id, error: {code, retryable, message}}`; `Bridge::chat` sends
+`buwiz.chat.stop {id}` as a post. Events may arrive before the start reply and are buffered by id; if `stop()` is
+called before the reply, the stop post is sent once the id is known.
+
 | Request field | Rule                                                                                                                                                  |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `model`       | A model id from the catalog; unknown ids reject `invalid_args`.                                                                                       |

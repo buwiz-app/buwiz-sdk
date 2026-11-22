@@ -22,6 +22,8 @@ struct FakeHost {
     answer: Mutex<Option<Result<Value, BuwizError>>>,
     listeners: Mutex<Vec<Listener>>,
     failed: Mutex<Vec<String>>,
+    defer_chat_reply: bool,
+    chat_reply: Mutex<Option<Done>>,
 }
 
 impl FakeHost {
@@ -29,6 +31,11 @@ impl FakeHost {
         for l in self.listeners.lock().unwrap().iter() {
             l(name, &data);
         }
+    }
+
+    fn reply_to_chat(&self, id: &str) {
+        let done = self.chat_reply.lock().unwrap().take().unwrap();
+        done(Ok(json!({"id": id})));
     }
 }
 
@@ -51,6 +58,10 @@ impl Host for FakeHost {
             .lock()
             .unwrap()
             .push((method.to_owned(), data.clone(), true));
+        if method == "buwiz.chat" && self.defer_chat_reply {
+            *self.chat_reply.lock().unwrap() = Some(done);
+            return;
+        }
         match self.answer.lock().unwrap().clone() {
             Some(a) => done(a),
             None => done(Ok(data)),
@@ -123,20 +134,34 @@ fn models_catalog_and_chat_events_match_the_bridge_contract() {
         .chat(ChatRequest {
             model: "anthropic/claude-sonnet-4-5".to_owned(),
             effort: Some("high".to_owned()),
-            messages: vec![ChatMessage {
-                role: "user".to_owned(),
-                text: "Read this".to_owned(),
-                files: vec![ChatFile {
-                    name: "scan.pdf".to_owned(),
-                    mime: "application/pdf".to_owned(),
-                    data: vec![0, 1, 255],
-                }],
-            }],
+            messages: vec![
+                ChatMessage {
+                    role: "user".to_owned(),
+                    text: "Read this".to_owned(),
+                    files: vec![ChatFile {
+                        name: "scan.pdf".to_owned(),
+                        mime: "application/pdf".to_owned(),
+                        data: vec![0, 1, 255],
+                    }],
+                },
+                ChatMessage {
+                    role: "assistant".to_owned(),
+                    text: "I see it".to_owned(),
+                    files: vec![],
+                },
+                ChatMessage {
+                    role: "user".to_owned(),
+                    text: "Thanks".to_owned(),
+                    files: vec![],
+                },
+            ],
         })
         .unwrap();
     let calls = host.sent.lock().unwrap();
     assert_eq!(calls[1].0, "buwiz.chat");
     assert_eq!(calls[1].1["messages"][0]["files"][0]["data"], "AAH/");
+    assert!(calls[1].1["messages"][1].get("files").is_none());
+    assert!(calls[1].1["messages"][2].get("files").is_none());
     drop(calls);
 
     chat.stop();
@@ -157,6 +182,71 @@ fn models_catalog_and_chat_events_match_the_bridge_contract() {
             stop_reason: ChatStopReason::Stopped,
         }
     );
+}
+
+#[test]
+fn chat_buffers_early_events_until_the_start_reply() {
+    let host = Arc::new(FakeHost {
+        granted: vec!["buwiz.chat"],
+        defer_chat_reply: true,
+        ..Default::default()
+    });
+    let bridge = Bridge::new(host.clone());
+    let mut chat = bridge.chat(ChatRequest::default()).unwrap();
+
+    host.emit(
+        "buwiz.chat.delta",
+        json!({"id": "chat-early", "text": "first"}),
+    );
+    host.emit(
+        "buwiz.chat.delta",
+        json!({"id": "chat-early", "text": "second"}),
+    );
+    host.emit(
+        "buwiz.chat.done",
+        json!({"id": "chat-early", "text": "firstsecond", "stop_reason": "end"}),
+    );
+    host.reply_to_chat("chat-early");
+
+    assert_eq!(chat.deltas.try_recv().unwrap(), "first");
+    assert_eq!(chat.deltas.try_recv().unwrap(), "second");
+    assert_eq!(
+        now(chat.done).unwrap(),
+        ChatResult {
+            text: "firstsecond".to_owned(),
+            stop_reason: ChatStopReason::End,
+        }
+    );
+}
+
+#[test]
+fn chat_stop_before_the_start_reply_posts_once_after_receiving_the_id() {
+    let host = Arc::new(FakeHost {
+        granted: vec!["buwiz.chat"],
+        defer_chat_reply: true,
+        ..Default::default()
+    });
+    let bridge = Bridge::new(host.clone());
+    let chat = bridge.chat(ChatRequest::default()).unwrap();
+
+    chat.stop();
+    chat.stop();
+    assert!(
+        host.sent
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(method, _, _)| method != "buwiz.chat.stop")
+    );
+
+    host.reply_to_chat("chat-stop");
+    let sent = host.sent.lock().unwrap();
+    let stops: Vec<_> = sent
+        .iter()
+        .filter(|(method, _, is_call)| method == "buwiz.chat.stop" && !is_call)
+        .collect();
+    assert_eq!(stops.len(), 1);
+    assert_eq!(stops[0].1, json!({"id": "chat-stop"}));
 }
 
 #[test]
