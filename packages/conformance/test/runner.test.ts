@@ -134,7 +134,7 @@ test(
     expect(manifestFailures(worded.out)).toEqual(["BRG-17"]);
 
     // An unknown permission is MAN-06 whatever its name says, and not a models grant.
-    for (const name of ["models_enabled", "models.x", "is not I-JSON", "must be a JSON object"]) {
+    for (const name of ["models_enabled", "models.x", "is not I-JSON", "must be a JSON object", "a\nb"]) {
       const unknown = await run(undefined, { [name]: true });
       expect(unknown.code).toBe(1);
       const unknownRows = (JSON.parse(unknown.out) as { rows: Row[] }).rows;

@@ -151,8 +151,14 @@ function obj(v, path) {
 
 // Objects that carry an access grant refuse unknown keys (3.4: fail closed).
 function onlyKeys(o, allowed, path) {
-  for (const k of Object.keys(o))
-    if (!allowed.includes(k)) throw invalid(`${path}.${k}`, "is not a known key here (refused: unknown keys in access grants fail closed)");
+  for (const k of Object.keys(o)) {
+    if (allowed.includes(k)) continue;
+    const e = invalid(`${path}.${k}`, "is not a known key here (refused: unknown keys in access grants fail closed)");
+    // Where the key sits, without its name: the runner picks the check from this, never from the message.
+    e.unknownKeyAt = path;
+
+    throw e;
+  }
 }
 
 function int(v, path, lo, hi) {
