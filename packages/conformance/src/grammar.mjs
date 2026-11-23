@@ -33,15 +33,3 @@ const v1Re = Object.fromEntries(Object.entries(V1).map(([k, src]) => [k, new Reg
 
 /** Whether `s` is a whole `kind` name of the v1 table (V1's keys). */
 export const isV1 = (kind, s) => v1Re[kind].test(String(s ?? "")) && (kind !== "pluginId" || String(s).length <= 255);
-
-/** Every typed token in composer text: {short, scope, value}, in order. */
-export function v1TypedTokens(text) {
-  return [...String(text ?? "").matchAll(new RegExp(V1.typedToken, "g"))].map((m) => ({ short: m[1], scope: m[2], value: m[3] }));
-}
-
-/** A canonical token `@short:scope:tkt_…` as {short, scope, ticket}, or null. */
-export function v1Canonical(s) {
-  const m = v1Re.canonicalToken.exec(String(s ?? ""));
-
-  return m ? { short: m[1], scope: m[2], ticket: m[3] } : null;
-}

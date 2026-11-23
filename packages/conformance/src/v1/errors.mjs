@@ -21,13 +21,3 @@ export class V1Error extends Error {
 export const refuse = (code, message, details) => {
   throw new V1Error(code, message, details);
 };
-
-/** The wire form of any error: a V1Error as is, anything else `internal`. */
-export function errorBody(e) {
-  const v = e instanceof V1Error ? e : new V1Error("internal", String(e?.message || e));
-  const body = { ok: false, code: v.code, message: String(v.message).slice(0, 500), retryable: v.retryable };
-
-  if (v.details) body.details = v.details;
-
-  return body;
-}
